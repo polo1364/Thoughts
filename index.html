@@ -1353,29 +1353,31 @@
                             }],
                             generationConfig: { 
                                 temperature: 0.7, 
-                                maxOutputTokens: 200,
-                                timeout: 30
+                                maxOutputTokens: 200
                             }
                         })
                     });
 
                     if (!response.ok) {
                         if (attempt < retries) {
+                            console.log(`圖片分析失敗,重試 ${attempt + 1}/${retries}`);
                             await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                             continue;
                         }
-                        throw new Error('圖片分析失敗');
+                        console.error('圖片分析失敗:', response.status);
+                        return '美麗的旅遊照片'; // 返回預設描述
                     }
                     
                     const data = await response.json();
                     return data.candidates[0].content.parts[0].text;
                 } catch (error) {
                     if (attempt < retries) {
+                        console.log(`圖片分析錯誤,重試 ${attempt + 1}/${retries}`);
                         await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
                         continue;
                     }
                     console.error('圖片分析錯誤:', error);
-                    return '美麗的旅遊照片'; // 返回預設描述而不是失敗
+                    return '精彩的照片記錄'; // 返回預設描述
                 }
             }
         }
@@ -1538,11 +1540,13 @@
             btn.disabled = true;
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(testUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        contents: [{ parts: [{ text: '你好,請回覆「測試成功」' }] }],
+                        contents: [{ parts: [{ text: '你好,請用繁體中文回覆「測試成功」' }] }],
                         generationConfig: { 
                             temperature: 0.7, 
                             maxOutputTokens: 100
@@ -1550,23 +1554,74 @@
                     })
                 });
 
+                // 顯示詳細的狀態碼
+                let statusInfo = `HTTP 狀態碼: ${response.status}\n`;
+                statusInfo += `狀態文字: ${response.statusText}\n\n`;
+
                 if (!response.ok) {
-                    if (response.status === 400) {
-                        throw new Error('API Key 格式錯誤');
-                    } else if (response.status === 403) {
-                        throw new Error('API Key 無效或未啟用 Gemini API');
-                    } else if (response.status === 429) {
-                        throw new Error('請求次數超過限制');
+                    const errorData = await response.json().catch(() => null);
+                    
+                    let errorMsg = '❌ API Key 測試失敗\n\n';
+                    errorMsg += statusInfo;
+                    
+                    if (errorData) {
+                        errorMsg += '錯誤詳情:\n';
+                        errorMsg += JSON.stringify(errorData, null, 2);
+                        errorMsg += '\n\n';
                     }
-                    throw new Error(`錯誤代碼: ${response.status}`);
+                    
+                    if (response.status === 400) {
+                        errorMsg += '💡 可能原因:\n';
+                        errorMsg += '- API Key 格式錯誤\n';
+                        errorMsg += '- 請求參數有誤\n';
+                        errorMsg += '\n建議:\n';
+                        errorMsg += '重新複製 API Key,確保沒有多餘空格';
+                    } else if (response.status === 403) {
+                        errorMsg += '💡 可能原因:\n';
+                        errorMsg += '- API Key 無效或過期\n';
+                        errorMsg += '- 沒有啟用 Generative Language API\n';
+                        errorMsg += '- API Key 權限不足\n';
+                        errorMsg += '\n解決方法:\n';
+                        errorMsg += '1. 前往 Google AI Studio 檢查 API Key\n';
+                        errorMsg += '2. 確認是否已啟用 API\n';
+                        errorMsg += '3. 或重新建立 API Key';
+                    } else if (response.status === 429) {
+                        errorMsg += '💡 原因:\n';
+                        errorMsg += '請求次數超過限制\n';
+                        errorMsg += '\n免費版限制:\n';
+                        errorMsg += '- 每分鐘 15 次\n';
+                        errorMsg += '- 每天 1500 次\n';
+                        errorMsg += '\n請稍後再試';
+                    } else if (response.status === 404) {
+                        errorMsg += '💡 可能原因:\n';
+                        errorMsg += '- API 網址錯誤\n';
+                        errorMsg += '- 模型名稱不存在';
+                    } else if (response.status >= 500) {
+                        errorMsg += '💡 原因:\n';
+                        errorMsg += 'Google 伺服器錯誤\n';
+                        errorMsg += '這不是你的問題,請稍後再試';
+                    }
+                    
+                    alert(errorMsg);
+                    throw new Error('測試失敗');
                 }
 
-                alert('✅ API Key 測試成功!\n\n您的 API Key 可以正常使用');
+                const data = await response.json();
+                const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || '(無回應)';
+
+                let successMsg = '✅ API Key 測試成功!\n\n';
+                successMsg += statusInfo;
+                successMsg += `AI 回覆: ${reply}\n\n`;
+                successMsg += '👍 您的 API Key 可以正常使用';
+                
+                alert(successMsg);
             } catch (error) {
-                if (error.message.includes('Failed to fetch')) {
-                    alert('❌ 網路連線失敗\n\n請檢查網路連線');
+                if (error.message === '測試失敗') {
+                    // 已經顯示過錯誤訊息了
+                } else if (error.message.includes('Failed to fetch')) {
+                    alert('❌ 網路連線失敗\n\n請檢查:\n1. 網路連線是否正常\n2. 是否開啟飛航模式\n3. WiFi/行動網路是否可用');
                 } else {
-                    alert('❌ API Key 測試失敗\n\n' + error.message + '\n\n請到 Google AI Studio 檢查您的 API Key');
+                    alert('❌ 未知錯誤\n\n' + error.message);
                 }
             } finally {
                 btn.textContent = originalText;

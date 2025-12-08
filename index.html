@@ -730,15 +730,15 @@
                     </div>
 
                     <div class="form-group">
-                        <label>📷 今日照片 (建議 3-5 張)</label>
+                        <label>📷 今日照片</label>
                         <div class="image-upload" id="imageUpload">
                             <div style="font-size: 2em; margin-bottom: 10px;">📸</div>
                             <p>點擊或拖曳照片上傳</p>
-                            <p style="font-size: 0.9em; color: #888; margin-top: 8px;">照片會自動壓縮,建議每天上傳 3-5 張</p>
+                            <p style="font-size: 0.9em; color: #888; margin-top: 8px;">使用 IndexedDB 儲存,可上傳更多照片</p>
                             <input type="file" id="imageInput" multiple accept="image/*" style="display: none;">
                         </div>
                         <div class="image-preview" id="imagePreview"></div>
-                        <div class="hint">💡 每張照片會自動壓縮以加快處理速度</div>
+                        <div class="hint">💡 照片會自動壓縮,建議每天 3-8 張</div>
                     </div>
 
                     <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; font-size: 1.1em;">
@@ -778,7 +778,67 @@
 
     <script>
         let uploadedImages = [];
-        let travelDays = JSON.parse(localStorage.getItem('travelDays') || '[]');
+        let travelDays = [];
+        let db;
+
+        // 初始化 IndexedDB
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('TravelDiaryDB', 1);
+                
+                request.onerror = () => reject(request.error);
+                request.onsuccess = () => {
+                    db = request.result;
+                    resolve(db);
+                };
+                
+                request.onupgradeneeded = (event) => {
+                    db = event.target.result;
+                    if (!db.objectStoreNames.contains('days')) {
+                        db.createObjectStore('days', { keyPath: 'id' });
+                    }
+                };
+            });
+        }
+
+        // 從 IndexedDB 讀取所有記錄
+        function loadDays() {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['days'], 'readonly');
+                const store = transaction.objectStore('days');
+                const request = store.getAll();
+                
+                request.onsuccess = () => {
+                    travelDays = request.result.sort((a, b) => a.dayNumber - b.dayNumber);
+                    resolve(travelDays);
+                };
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // 儲存記錄到 IndexedDB
+        function saveDay(dayData) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['days'], 'readwrite');
+                const store = transaction.objectStore('days');
+                const request = store.add(dayData);
+                
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        // 刪除記錄
+        function deleteDay(id) {
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(['days'], 'readwrite');
+                const store = transaction.objectStore('days');
+                const request = store.delete(id);
+                
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
 
         // API Key 處理
         const apiKeyInput = document.getElementById('apiKey');
@@ -862,9 +922,9 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 設定最大寬高
-                const maxWidth = 1200;
-                const maxHeight = 1200;
+                // 設定最大寬高 - 改小一點
+                const maxWidth = 800;
+                const maxHeight = 800;
                 let width = img.width;
                 let height = img.height;
                 
@@ -885,8 +945,8 @@
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // 壓縮品質 0.7
-                callback(canvas.toDataURL('image/jpeg', 0.7));
+                // 壓縮品質改為 0.5,更小的檔案
+                callback(canvas.toDataURL('image/jpeg', 0.5));
             };
             img.src = base64;
         }
@@ -944,28 +1004,23 @@
                 images: [...uploadedImages]
             };
 
-            travelDays.push(dayData);
-            travelDays.sort((a, b) => a.dayNumber - b.dayNumber);
-            
-            // 儲存到 localStorage
             try {
-                localStorage.setItem('travelDays', JSON.stringify(travelDays));
+                await saveDay(dayData);
+                await loadDays();
                 alert('✅ 第 ' + dayNumber + ' 天的記錄已儲存!');
+                
+                // 清空表單,但保留 tripName
+                document.getElementById('dayNumber').value = dayNumber + 1;
+                document.getElementById('date').value = '';
+                document.getElementById('location').value = '';
+                document.getElementById('attractions').value = '';
+                document.getElementById('notes').value = '';
+                uploadedImages = [];
+                imagePreview.classList.remove('active');
+                imagePreview.innerHTML = '';
             } catch (error) {
-                alert('❌ 儲存失敗: ' + error.message + '\n可能是照片太多或太大,請減少照片數量');
-                travelDays.pop(); // 移除剛加入的資料
-                return;
+                alert('❌ 儲存失敗: ' + error.message);
             }
-            
-            // 清空表單,但保留 tripName
-            document.getElementById('dayNumber').value = dayNumber + 1; // 自動加 1
-            document.getElementById('date').value = '';
-            document.getElementById('location').value = '';
-            document.getElementById('attractions').value = '';
-            document.getElementById('notes').value = '';
-            uploadedImages = [];
-            imagePreview.classList.remove('active');
-            imagePreview.innerHTML = '';
         });
 
         // 渲染天數列表
@@ -1003,12 +1058,16 @@
             `).join('') + '</div>';
         }
 
-        window.deleteDay = function(id) {
+        window.deleteDay = async function(id) {
             if (confirm('確定要刪除這一天的記錄嗎?')) {
-                travelDays = travelDays.filter(day => day.id !== id);
-                localStorage.setItem('travelDays', JSON.stringify(travelDays));
-                renderDaysList();
-                renderStats();
+                try {
+                    await deleteDay(id);
+                    await loadDays();
+                    renderDaysList();
+                    renderStats();
+                } catch (error) {
+                    alert('刪除失敗: ' + error.message);
+                }
             }
         };
 
@@ -1159,14 +1218,26 @@
             });
         });
 
-        // 初始化
-        renderStats();
-        
-        // 如果有記錄,自動填入旅程名稱
-        if (travelDays.length > 0) {
-            document.getElementById('tripName').value = travelDays[0].tripName;
-            document.getElementById('dayNumber').value = travelDays.length + 1;
+        // 初始化資料庫並載入資料
+        async function initialize() {
+            try {
+                await initDB();
+                await loadDays();
+                renderStats();
+                
+                // 如果有記錄,自動填入旅程名稱
+                if (travelDays.length > 0) {
+                    document.getElementById('tripName').value = travelDays[0].tripName;
+                    document.getElementById('dayNumber').value = travelDays.length + 1;
+                }
+            } catch (error) {
+                console.error('初始化失敗:', error);
+                alert('資料庫初始化失敗,請重新整理頁面');
+            }
         }
+
+        // 啟動應用
+        initialize();
     </script>
 </body>
 </html>

@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>多日旅遊心得報告產生器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            padding: 20px;
+            position: relative;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.98);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 25px 80px rgba(0,0,0,0.25), 
+                        0 0 0 1px rgba(255,255,255,0.2);
+            overflow: hidden;
+            position: relative;
+            z-index: 1;
+            animation: slideUp 0.6s ease-out;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .header h1 {
+            font-size: 2.8em;
+            margin-bottom: 15px;
+            font-weight: 800;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 20px rgba(0,0,0,0.2);
+            letter-spacing: -1px;
+        }
+
+        .header p {
+            font-size: 1.15em;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
+            font-weight: 400;
+        }
+
+        .content {
+            padding: 50px;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                padding: 30px 20px;
+            }
+        }
+
+        .api-section {
+            background: linear-gradient(135deg, #d4f1d7 0%, #c8e6c9 100%);
+            border: 2px solid rgba(76, 175, 80, 0.3);
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 35px;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .api-section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.15);
+        }
+
+        .api-section h3 {
+            color: #2e7d32;
+            margin-bottom: 18px;
+            font-size: 1.2em;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .api-section input {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid rgba(76, 175, 80, 0.3);
+            border-radius: 10px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            background: white;
+        }
+
+        .api-section input:focus {
+            outline: none;
+            border-color: #4caf50;
+            box-shadow: 0 0 0 4px rgba(76, 175, 80, 0.1);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #f0f0f0;
+            overflow-x: auto;
+            padding: 0 5px;
+        }
+
+        .tab {
+            padding: 16px 28px;
+            background: transparent;
+            border: none;
+            font-size: 1.05em;
+            font-weight: 600;
+            cursor: pointer;
+            color: #888;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.3s ease;
+            border-radius: 8px 8px 0 0;
+            white-space: nowrap;
+        }
+
+        .tab:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: rgba(102, 126, 234, 0.08);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 28px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 700;
+            color: #2c3e50;
+            font-size: 1.05em;
+            letter-spacing: -0.2px;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="date"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 14px 18px;
+            border: 2px solid #e8ecef;
+            border-radius: 12px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            background: #fafbfc;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 120px;
+            line-height: 1.6;
+        }
+
+        .image-upload {
+            border: 3px dashed #c5d4e8;
+            border-radius: 16px;
+            padding: 45px 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .image-upload::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .image-upload:hover {
+            background: linear-gradient(135deg, #f0f4ff 0%, #e8efff 100%);
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+        }
+
+        .image-upload:hover::before {
+            opacity: 1;
+        }
+
+        .image-upload.dragover {
+            background: linear-gradient(135deg, #e8efff 0%, #dbe7ff 100%);
+            border-color: #667eea;
+            border-width: 3px;
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .image-preview {
+            display: none;
+            margin-top: 20px;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .image-preview.active {
+            display: flex;
+        }
+
+        .preview-item {
+            position: relative;
+            width: 110px;
+            height: 110px;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.12);
+            transition: all 0.3s ease;
+        }
+
+        .preview-item:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.18);
+        }
+
+        .preview-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .remove-image {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(244, 67, 54, 0.95);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .preview-item:hover .remove-image {
+            opacity: 1;
+        }
+
+        .remove-image:hover {
+            background: #d32f2f;
+            transform: scale(1.1);
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.4);
+        }
+
+        .day-list {
+            display: grid;
+            gap: 24px;
+            margin-bottom: 30px;
+        }
+
+        .day-card {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
+            border-radius: 18px;
+            padding: 30px;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.08);
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .day-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .day-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(102, 126, 234, 0.15);
+        }
+
+        .day-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(102, 126, 234, 0.1);
+        }
+
+        .day-card-header h3 {
+            color: #667eea;
+            font-size: 1.4em;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .day-card-content {
+            color: #4a5568;
+            line-height: 1.8;
+        }
+
+        .day-card-content p {
+            margin-bottom: 12px;
+            font-size: 1.02em;
+        }
+
+        .day-card-content strong {
+            color: #2d3748;
+            font-weight: 700;
+        }
+
+        .day-card-images {
+            display: flex;
+            gap: 12px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .day-card-images img {
+            width: 90px;
+            height: 90px;
+            object-fit: cover;
+            border-radius: 10px;
+            box-shadow: 0 3px 12px rgba(0,0,0,0.12);
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .day-card-images img:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.18);
+        }
+
+        .btn-delete {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+            padding: 10px 18px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+        }
+
+        .btn-delete:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(244, 67, 54, 0.4);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            display: none;
+        }
+
+        .loading.active {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .spinner {
+            border: 5px solid #f3f4f6;
+            border-top: 5px solid #667eea;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+            margin: 0 auto 25px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading p {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 1.05em;
+        }
+
+        .error-message {
+            background: linear-gradient(135deg, #fee 0%, #fdd 100%);
+            color: #c62828;
+            padding: 18px 22px;
+            border-radius: 12px;
+            margin-top: 25px;
+            display: none;
+            border-left: 4px solid #c62828;
+            box-shadow: 0 4px 15px rgba(198, 40, 40, 0.15);
+            font-weight: 500;
+        }
+
+        .error-message.active {
+            display: block;
+            animation: slideDown 0.4s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-section {
+            background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+            border-radius: 18px;
+            padding: 35px;
+            margin-top: 35px;
+            display: none;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.1);
+            border: 1px solid rgba(102, 126, 234, 0.15);
+        }
+
+        .result-section.active {
+            display: block;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .result-section h2 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .result-content {
+            line-height: 2;
+            font-size: 1.08em;
+            color: #2d3748;
+            white-space: pre-wrap;
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        .hint {
+            font-size: 0.92em;
+            color: #718096;
+            margin-top: 8px;
+            line-height: 1.5;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #a0aec0;
+        }
+
+        .empty-state-icon {
+            font-size: 5em;
+            margin-bottom: 25px;
+            opacity: 0.6;
+        }
+
+        .empty-state h3 {
+            font-size: 1.5em;
+            margin-bottom: 12px;
+            color: #718096;
+        }
+
+        .empty-state p {
+            font-size: 1.05em;
+            line-height: 1.6;
+        }
+
+        .stats {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 35px;
+            flex-wrap: wrap;
+        }
+
+        .stat-card {
+            flex: 1;
+            min-width: 160px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 28px 20px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 60%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .stat-number {
+            font-size: 3em;
+            font-weight: 800;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .stat-label {
+            font-size: 0.95em;
+            opacity: 0.95;
+            position: relative;
+            z-index: 1;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📔 多日旅遊心得報告產生器</h1>
+            <p>記錄每一天的旅程,最後生成完整的旅遊報告!</p>
+        </div>
+
+        <div class="content">
+            <div class="api-section">
+                <h3>🔑 Google AI Studio API Key</h3>
+                <input type="password" id="apiKey" placeholder="請輸入你的 Google AI Studio API Key">
+                <div class="hint">
+                    取得方式: <a href="https://aistudio.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" data-tab="add">➕ 新增每日記錄</button>
+                <button class="tab" data-tab="view">📋 查看所有記錄</button>
+                <button class="tab" data-tab="report">📊 生成完整報告</button>
+            </div>
+
+            <!-- 新增記錄頁面 -->
+            <div id="addTab" class="tab-content active">
+                <form id="dayForm">
+                    <div class="form-group">
+                        <label for="tripName">🎯 旅程名稱</label>
+                        <input type="text" id="tripName" placeholder="例如: 京都五日遊" required>
+                        <div class="hint">給這次旅行取個名字</div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="dayNumber">📅 第幾天</label>
+                        <input type="number" id="dayNumber" min="1" placeholder="例如: 1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="date">📆 日期</label>
+                        <input type="date" id="date" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="location">📍 主要地點</label>
+                        <input type="text" id="location" placeholder="例如: 京都市區" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="attractions">🏛️ 景點 (用逗號分隔)</label>
+                        <input type="text" id="attractions" placeholder="例如: 清水寺, 金閣寺, 嵐山" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">💭 今日心得</label>
+                        <textarea id="notes" placeholder="描述今天的感受、印象深刻的事..." required></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>📷 今日照片</label>
+                        <div class="image-upload" id="imageUpload">
+                            <div style="font-size: 2em; margin-bottom: 10px;">📸</div>
+                            <p>點擊或拖曳照片上傳</p>
+                            <input type="file" id="imageInput" multiple accept="image/*" style="display: none;">
+                        </div>
+                        <div class="image-preview" id="imagePreview"></div>
+                    </div>
+
+                    <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; font-size: 1.1em;">
+                        ✅ 儲存這一天的記錄
+                    </button>
+                </form>
+            </div>
+
+            <!-- 查看記錄頁面 -->
+            <div id="viewTab" class="tab-content">
+                <div id="daysList"></div>
+            </div>
+
+            <!-- 生成報告頁面 -->
+            <div id="reportTab" class="tab-content">
+                <div class="stats" id="stats"></div>
+                
+                <button id="generateReportBtn" class="btn btn-primary" style="width: 100%; padding: 18px; font-size: 1.2em;">
+                    📝 生成完整旅遊報告
+                </button>
+
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>正在分析所有照片和生成完整報告...</p>
+                </div>
+
+                <div class="error-message" id="errorMessage"></div>
+
+                <div class="result-section" id="resultSection">
+                    <h2 style="margin-bottom: 20px; color: #667eea;">✨ 你的旅遊報告</h2>
+                    <div class="result-content" id="resultContent"></div>
+                    <button class="btn btn-primary" id="copyBtn" style="margin-top: 20px;">📋 複製報告</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedImages = [];
+        let travelDays = JSON.parse(localStorage.getItem('travelDays') || '[]');
+
+        // API Key 處理
+        const apiKeyInput = document.getElementById('apiKey');
+        if (localStorage.getItem('gemini_api_key')) {
+            apiKeyInput.value = localStorage.getItem('gemini_api_key');
+        }
+        apiKeyInput.addEventListener('change', () => {
+            localStorage.setItem('gemini_api_key', apiKeyInput.value);
+        });
+
+        // Tab 切換
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabName = tab.dataset.tab;
+                
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                tab.classList.add('active');
+                document.getElementById(tabName + 'Tab').classList.add('active');
+                
+                if (tabName === 'view') {
+                    renderDaysList();
+                } else if (tabName === 'report') {
+                    renderStats();
+                }
+            });
+        });
+
+        // 圖片上傳
+        const imageUpload = document.getElementById('imageUpload');
+        const imageInput = document.getElementById('imageInput');
+        const imagePreview = document.getElementById('imagePreview');
+
+        imageUpload.addEventListener('click', () => imageInput.click());
+        
+        imageUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            imageUpload.style.background = '#e8ebff';
+        });
+        
+        imageUpload.addEventListener('dragleave', () => {
+            imageUpload.style.background = '#f8f9ff';
+        });
+        
+        imageUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            imageUpload.style.background = '#f8f9ff';
+            handleFiles(e.dataTransfer.files);
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            for (let file of files) {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        uploadedImages.push(e.target.result);
+                        displayPreview();
+                    };
+                    reader.readAsDataURL(file);
+                }
+            }
+        }
+
+        function displayPreview() {
+            imagePreview.innerHTML = '';
+            uploadedImages.forEach((img, index) => {
+                const div = document.createElement('div');
+                div.className = 'preview-item';
+                div.innerHTML = `
+                    <img src="${img}" alt="Preview">
+                    <button class="remove-image" onclick="removeImage(${index})">×</button>
+                `;
+                imagePreview.appendChild(div);
+            });
+            imagePreview.classList.add('active');
+        }
+
+        window.removeImage = function(index) {
+            uploadedImages.splice(index, 1);
+            if (uploadedImages.length === 0) {
+                imagePreview.classList.remove('active');
+            }
+            displayPreview();
+        };
+
+        // 儲存每日記錄
+        document.getElementById('dayForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const dayData = {
+                id: Date.now(),
+                tripName: document.getElementById('tripName').value,
+                dayNumber: parseInt(document.getElementById('dayNumber').value),
+                date: document.getElementById('date').value,
+                location: document.getElementById('location').value,
+                attractions: document.getElementById('attractions').value,
+                notes: document.getElementById('notes').value,
+                images: [...uploadedImages]
+            };
+
+            travelDays.push(dayData);
+            travelDays.sort((a, b) => a.dayNumber - b.dayNumber);
+            localStorage.setItem('travelDays', JSON.stringify(travelDays));
+
+            alert('✅ 記錄已儲存!');
+            
+            // 清空表單
+            document.getElementById('dayForm').reset();
+            uploadedImages = [];
+            imagePreview.classList.remove('active');
+            imagePreview.innerHTML = '';
+        });
+
+        // 渲染天數列表
+        function renderDaysList() {
+            const container = document.getElementById('daysList');
+            
+            if (travelDays.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>還沒有記錄</h3>
+                        <p>請先到「新增每日記錄」頁面添加你的旅程記錄</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = '<div class="day-list">' + travelDays.map(day => `
+                <div class="day-card">
+                    <div class="day-card-header">
+                        <h3>Day ${day.dayNumber} - ${day.location}</h3>
+                        <button class="btn-delete" onclick="deleteDay(${day.id})">🗑️ 刪除</button>
+                    </div>
+                    <div class="day-card-content">
+                        <p><strong>📅 日期:</strong> ${day.date}</p>
+                        <p><strong>🏛️ 景點:</strong> ${day.attractions}</p>
+                        <p><strong>💭 心得:</strong> ${day.notes}</p>
+                        ${day.images.length > 0 ? `
+                            <div class="day-card-images">
+                                ${day.images.map(img => `<img src="${img}" alt="照片">`).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('') + '</div>';
+        }
+
+        window.deleteDay = function(id) {
+            if (confirm('確定要刪除這一天的記錄嗎?')) {
+                travelDays = travelDays.filter(day => day.id !== id);
+                localStorage.setItem('travelDays', JSON.stringify(travelDays));
+                renderDaysList();
+                renderStats();
+            }
+        };
+
+        // 渲染統計
+        function renderStats() {
+            const container = document.getElementById('stats');
+            const totalDays = travelDays.length;
+            const totalPhotos = travelDays.reduce((sum, day) => sum + day.images.length, 0);
+            const locations = [...new Set(travelDays.map(d => d.location))].length;
+
+            container.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${totalDays}</div>
+                    <div class="stat-label">記錄天數</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${totalPhotos}</div>
+                    <div class="stat-label">照片數量</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${locations}</div>
+                    <div class="stat-label">地點數量</div>
+                </div>
+            `;
+        }
+
+        // 生成完整報告
+        document.getElementById('generateReportBtn').addEventListener('click', async () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                alert('請先輸入 API Key!');
+                return;
+            }
+
+            if (travelDays.length === 0) {
+                alert('請先添加至少一天的記錄!');
+                return;
+            }
+
+            const loading = document.getElementById('loading');
+            const errorMessage = document.getElementById('errorMessage');
+            const resultSection = document.getElementById('resultSection');
+            
+            loading.classList.add('active');
+            errorMessage.classList.remove('active');
+            resultSection.classList.remove('active');
+
+            try {
+                // 分析所有照片
+                const daysWithDescriptions = [];
+                for (const day of travelDays) {
+                    const imageDescriptions = [];
+                    for (const img of day.images) {
+                        const desc = await analyzeImage(img, apiKey);
+                        imageDescriptions.push(desc);
+                    }
+                    daysWithDescriptions.push({
+                        ...day,
+                        imageDescriptions
+                    });
+                }
+
+                // 生成完整報告
+                const report = await generateReport(daysWithDescriptions, apiKey);
+                
+                document.getElementById('resultContent').textContent = report;
+                resultSection.classList.add('active');
+            } catch (error) {
+                errorMessage.textContent = '生成失敗: ' + error.message;
+                errorMessage.classList.add('active');
+            } finally {
+                loading.classList.remove('active');
+            }
+        });
+
+        async function analyzeImage(imageData, apiKey) {
+            const base64Data = imageData.split(',')[1];
+            
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: '請用繁體中文簡短描述這張照片,30字以內。' },
+                            { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
+                        ]
+                    }],
+                    generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
+                })
+            });
+
+            if (!response.ok) throw new Error('圖片分析失敗');
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        async function generateReport(days, apiKey) {
+            const tripName = days[0].tripName;
+            
+            let prompt = `請根據以下多日旅遊記錄,生成一篇完整的旅遊報告,約800-1200字:
+
+旅程名稱: ${tripName}
+總共天數: ${days.length} 天
+
+每日詳細記錄:\n`;
+
+            days.forEach(day => {
+                prompt += `\nDay ${day.dayNumber} (${day.date})
+地點: ${day.location}
+景點: ${day.attractions}
+心得: ${day.notes}`;
+                
+                if (day.imageDescriptions.length > 0) {
+                    prompt += `\n照片描述: ${day.imageDescriptions.join('、')}`;
+                }
+            });
+
+            prompt += `\n\n要求:
+1. 用第一人稱撰寫完整的旅遊報告
+2. 要有開場白,介紹這次旅行
+3. 按天數順序描述每天的行程和感受
+4. 自然融入照片描述的內容
+5. 最後要有總結,分享整體感想和推薦
+6. 語氣輕鬆自然,像是在寫遊記
+7. 使用繁體中文
+8. 結構完整,有標題和分段`;
+
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { temperature: 0.8, maxOutputTokens: 3000 }
+                })
+            });
+
+            if (!response.ok) throw new Error('報告生成失敗');
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        // 複製功能
+        document.getElementById('copyBtn').addEventListener('click', () => {
+            const text = document.getElementById('resultContent').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ 已複製到剪貼簿!');
+            });
+        });
+
+        // 初始化
+        renderStats();
+    </script>
+</body>
+</html>

@@ -697,6 +697,16 @@
 
             <!-- 新增記錄頁面 -->
             <div id="addTab" class="tab-content active">
+                <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" id="exportDraftBtn" style="flex: 1; min-width: 150px; padding: 12px; font-size: 0.95em;">
+                        📤 匯出當前草稿
+                    </button>
+                    <button class="btn btn-success" id="importDraftBtn" style="flex: 1; min-width: 150px; padding: 12px; font-size: 0.95em;">
+                        📥 匯入草稿
+                    </button>
+                    <input type="file" id="importDraftFile" accept=".json" style="display: none;">
+                </div>
+
                 <form id="dayForm">
                     <div class="form-group">
                         <label for="tripName">🎯 旅程名稱</label>
@@ -984,9 +994,9 @@
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 設定最大寬高 - 改小一點
-                const maxWidth = 800;
-                const maxHeight = 800;
+                // 改成更小的尺寸,加快處理速度
+                const maxWidth = 600;
+                const maxHeight = 600;
                 let width = img.width;
                 let height = img.height;
                 
@@ -1007,8 +1017,12 @@
                 canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // 壓縮品質改為 0.5,更小的檔案
-                callback(canvas.toDataURL('image/jpeg', 0.5));
+                // 降低品質到 0.4,減少檔案大小
+                callback(canvas.toDataURL('image/jpeg', 0.4));
+            };
+            img.onerror = function() {
+                console.error('圖片載入失敗');
+                callback(null);
             };
             img.src = base64;
         }
@@ -1296,20 +1310,28 @@
                     loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
                     
                     const imageDescriptions = [];
-                    // 限制每天最多分析 5 張照片以避免超時
-                    const imagesToAnalyze = day.images.slice(0, 5);
+                    // 只分析前 3 張照片,減少時間
+                    const imagesToAnalyze = day.images.slice(0, 3);
                     
-                    for (let i = 0; i < imagesToAnalyze.length; i++) {
-                        try {
-                            const desc = await analyzeImage(imagesToAnalyze[i], apiKey);
-                            imageDescriptions.push(desc);
-                            // 每張照片之間延遲 500ms 避免 API 限流
-                            if (i < imagesToAnalyze.length - 1) {
-                                await new Promise(resolve => setTimeout(resolve, 500));
+                    if (imagesToAnalyze.length > 0) {
+                        // 嘗試分析照片,但如果失敗就跳過
+                        for (let i = 0; i < imagesToAnalyze.length; i++) {
+                            try {
+                                const desc = await Promise.race([
+                                    analyzeImage(imagesToAnalyze[i], apiKey),
+                                    new Promise((_, reject) => 
+                                        setTimeout(() => reject(new Error('timeout')), 15000)
+                                    )
+                                ]);
+                                imageDescriptions.push(desc);
+                                // 每張照片之間延遲 800ms
+                                if (i < imagesToAnalyze.length - 1) {
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                }
+                            } catch (error) {
+                                console.error('照片分析失敗，跳過:', error.message);
+                                // 跳過失敗的照片
                             }
-                        } catch (error) {
-                            console.error('照片分析失敗，跳過:', error);
-                            imageDescriptions.push('精彩的照片');
                         }
                     }
                     
@@ -1329,56 +1351,53 @@
                 resultSection.classList.add('active');
             } catch (error) {
                 console.error('生成錯誤:', error);
-                errorMessage.textContent = '生成失敗: ' + error.message + '\n請檢查 API Key 是否正確,或稍後再試。';
+                let errorMsg = '生成失敗: ' + error.message;
+                
+                if (error.message.includes('Failed to fetch') || error.message.includes('Load failed')) {
+                    errorMsg += '\n\n💡 建議:\n';
+                    errorMsg += '1. 檢查網路連線\n';
+                    errorMsg += '2. 減少照片數量(每天 2-3 張)\n';
+                    errorMsg += '3. 切換到更穩定的網路環境';
+                }
+                
+                errorMessage.textContent = errorMsg;
                 errorMessage.classList.add('active');
             } finally {
                 loading.classList.remove('active');
             }
         });
 
-        async function analyzeImage(imageData, apiKey, retries = 2) {
+        async function analyzeImage(imageData, apiKey) {
             const base64Data = imageData.split(',')[1];
             
-            for (let attempt = 0; attempt <= retries; attempt++) {
-                try {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{
-                                parts: [
-                                    { text: '請用繁體中文簡短描述這張照片,30字以內。' },
-                                    { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
-                                ]
-                            }],
-                            generationConfig: { 
-                                temperature: 0.7, 
-                                maxOutputTokens: 200
-                            }
-                        })
-                    });
-
-                    if (!response.ok) {
-                        if (attempt < retries) {
-                            console.log(`圖片分析失敗,重試 ${attempt + 1}/${retries}`);
-                            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-                            continue;
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{
+                            parts: [
+                                { text: '請用繁體中文簡短描述這張照片,20字以內。' },
+                                { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
+                            ]
+                        }],
+                        generationConfig: { 
+                            temperature: 0.7, 
+                            maxOutputTokens: 100
                         }
-                        console.error('圖片分析失敗:', response.status);
-                        return '美麗的旅遊照片'; // 返回預設描述
-                    }
-                    
-                    const data = await response.json();
-                    return data.candidates[0].content.parts[0].text;
-                } catch (error) {
-                    if (attempt < retries) {
-                        console.log(`圖片分析錯誤,重試 ${attempt + 1}/${retries}`);
-                        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
-                        continue;
-                    }
-                    console.error('圖片分析錯誤:', error);
-                    return '精彩的照片記錄'; // 返回預設描述
+                    })
+                });
+
+                if (!response.ok) {
+                    console.error('圖片分析失敗:', response.status);
+                    return '美麗的照片'; // 失敗就用預設描述
                 }
+                
+                const data = await response.json();
+                return data.candidates?.[0]?.content?.parts?.[0]?.text || '精彩的照片';
+            } catch (error) {
+                console.error('圖片分析錯誤:', error.message);
+                return '旅遊照片'; // 出錯就用預設描述
             }
         }
 
@@ -1414,7 +1433,7 @@
 8. 結構完整,有標題和分段`;
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1526,6 +1545,100 @@
             }
         });
 
+        // 匯出當前草稿
+        document.getElementById('exportDraftBtn').addEventListener('click', () => {
+            const draft = {
+                tripName: document.getElementById('tripName').value,
+                dayNumber: document.getElementById('dayNumber').value,
+                date: document.getElementById('date').value,
+                location: document.getElementById('location').value,
+                attractions: document.getElementById('attractions').value,
+                notes: document.getElementById('notes').value,
+                images: uploadedImages,
+                exportDate: new Date().toISOString(),
+                version: '1.0'
+            };
+
+            // 檢查是否有內容
+            if (!draft.tripName && !draft.location && !draft.notes) {
+                alert('⚠️ 目前沒有可以匯出的草稿內容');
+                return;
+            }
+
+            const dataStr = JSON.stringify(draft, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            const filename = draft.tripName || '旅遊草稿';
+            const day = draft.dayNumber || 'X';
+            a.download = `${filename}_Day${day}_草稿_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            alert('✅ 草稿已匯出!');
+        });
+
+        // 匯入草稿
+        document.getElementById('importDraftBtn').addEventListener('click', () => {
+            // 檢查是否有未儲存的內容
+            const hasContent = document.getElementById('tripName').value ||
+                              document.getElementById('location').value ||
+                              document.getElementById('notes').value ||
+                              uploadedImages.length > 0;
+
+            if (hasContent) {
+                if (!confirm('⚠️ 目前有未儲存的內容\n\n匯入草稿會覆蓋現有內容,確定要繼續嗎?')) {
+                    return;
+                }
+            }
+
+            document.getElementById('importDraftFile').click();
+        });
+
+        document.getElementById('importDraftFile').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const draft = JSON.parse(text);
+
+                // 驗證格式
+                if (typeof draft !== 'object') {
+                    throw new Error('檔案格式不正確');
+                }
+
+                // 填入表單
+                if (draft.tripName) document.getElementById('tripName').value = draft.tripName;
+                if (draft.dayNumber) document.getElementById('dayNumber').value = draft.dayNumber;
+                if (draft.date) document.getElementById('date').value = draft.date;
+                if (draft.location) document.getElementById('location').value = draft.location;
+                if (draft.attractions) document.getElementById('attractions').value = draft.attractions;
+                if (draft.notes) document.getElementById('notes').value = draft.notes;
+                
+                // 載入照片
+                if (draft.images && Array.isArray(draft.images)) {
+                    uploadedImages = draft.images;
+                    displayPreview();
+                }
+
+                // 儲存到暫存
+                saveFormDraft();
+
+                alert('✅ 草稿匯入成功!');
+                
+                // 清空檔案選擇
+                e.target.value = '';
+            } catch (error) {
+                alert('❌ 匯入失敗: ' + error.message + '\n\n請確認檔案格式正確');
+                e.target.value = '';
+            }
+        });
+
         // 測試 API Key 功能
         document.getElementById('testApiBtn').addEventListener('click', async () => {
             const apiKey = apiKeyInput.value.trim();
@@ -1540,7 +1653,7 @@
             btn.disabled = true;
 
             try {
-                const testUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+                const testUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
                 const response = await fetch(testUrl, {
                     method: 'POST',

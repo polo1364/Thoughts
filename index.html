@@ -749,6 +749,18 @@
 
             <!-- 查看記錄頁面 -->
             <div id="viewTab" class="tab-content">
+                <div style="display: flex; gap: 15px; margin-bottom: 25px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" id="exportBtn" style="flex: 1; min-width: 150px;">
+                        📤 匯出所有記錄
+                    </button>
+                    <button class="btn btn-success" id="importBtn" style="flex: 1; min-width: 150px;">
+                        📥 匯入記錄
+                    </button>
+                    <button class="btn btn-delete" id="clearAllBtn" style="flex: 1; min-width: 150px; background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%); color: white;">
+                        🗑️ 清空所有記錄
+                    </button>
+                    <input type="file" id="importFile" accept=".json" style="display: none;">
+                </div>
                 <div id="daysList"></div>
             </div>
 
@@ -770,7 +782,10 @@
                 <div class="result-section" id="resultSection">
                     <h2 style="margin-bottom: 20px; color: #667eea;">✨ 你的旅遊報告</h2>
                     <div class="result-content" id="resultContent"></div>
-                    <button class="btn btn-primary" id="copyBtn" style="margin-top: 20px;">📋 複製報告</button>
+                    <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+                        <button class="btn btn-primary" id="copyBtn" style="flex: 1; min-width: 150px;">📋 複製報告</button>
+                        <button class="btn btn-success" id="exportReportBtn" style="flex: 1; min-width: 150px;">💾 下載報告</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -817,7 +832,7 @@
         }
 
         // 儲存記錄到 IndexedDB
-        function saveDay(dayData) {
+        function saveDayToDB(dayData) {
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction(['days'], 'readwrite');
                 const store = transaction.objectStore('days');
@@ -829,7 +844,7 @@
         }
 
         // 刪除記錄
-        function deleteDay(id) {
+        function deleteDayFromDB(id) {
             return new Promise((resolve, reject) => {
                 const transaction = db.transaction(['days'], 'readwrite');
                 const store = transaction.objectStore('days');
@@ -872,6 +887,48 @@
         const imageUpload = document.getElementById('imageUpload');
         const imageInput = document.getElementById('imageInput');
         const imagePreview = document.getElementById('imagePreview');
+
+        // 自動儲存表單內容
+        function saveFormDraft() {
+            const draft = {
+                tripName: document.getElementById('tripName').value,
+                dayNumber: document.getElementById('dayNumber').value,
+                date: document.getElementById('date').value,
+                location: document.getElementById('location').value,
+                attractions: document.getElementById('attractions').value,
+                notes: document.getElementById('notes').value,
+                images: uploadedImages
+            };
+            localStorage.setItem('formDraft', JSON.stringify(draft));
+        }
+
+        // 載入表單暫存
+        function loadFormDraft() {
+            const draft = localStorage.getItem('formDraft');
+            if (draft) {
+                try {
+                    const data = JSON.parse(draft);
+                    if (data.tripName) document.getElementById('tripName').value = data.tripName;
+                    if (data.dayNumber) document.getElementById('dayNumber').value = data.dayNumber;
+                    if (data.date) document.getElementById('date').value = data.date;
+                    if (data.location) document.getElementById('location').value = data.location;
+                    if (data.attractions) document.getElementById('attractions').value = data.attractions;
+                    if (data.notes) document.getElementById('notes').value = data.notes;
+                    if (data.images && data.images.length > 0) {
+                        uploadedImages = data.images;
+                        displayPreview();
+                    }
+                } catch (error) {
+                    console.error('載入暫存失敗:', error);
+                }
+            }
+        }
+
+        // 監聽表單變化,自動儲存
+        ['tripName', 'dayNumber', 'date', 'location', 'attractions', 'notes'].forEach(id => {
+            document.getElementById(id).addEventListener('input', saveFormDraft);
+            document.getElementById(id).addEventListener('change', saveFormDraft);
+        });
 
         imageUpload.addEventListener('click', () => imageInput.click());
         
@@ -972,6 +1029,9 @@
                 imagePreview.appendChild(div);
             });
             imagePreview.classList.add('active');
+            
+            // 照片變更時自動儲存
+            saveFormDraft();
         }
 
         window.removeImage = function(index) {
@@ -1005,7 +1065,7 @@
             };
 
             try {
-                await saveDay(dayData);
+                await saveDayToDB(dayData);
                 await loadDays();
                 alert('✅ 第 ' + dayNumber + ' 天的記錄已儲存!');
                 
@@ -1018,6 +1078,9 @@
                 uploadedImages = [];
                 imagePreview.classList.remove('active');
                 imagePreview.innerHTML = '';
+                
+                // 儲存新的表單狀態
+                saveFormDraft();
             } catch (error) {
                 alert('❌ 儲存失敗: ' + error.message);
             }
@@ -1061,7 +1124,7 @@
         window.deleteDay = async function(id) {
             if (confirm('確定要刪除這一天的記錄嗎?')) {
                 try {
-                    await deleteDay(id);
+                    await deleteDayFromDB(id);
                     await loadDays();
                     renderDaysList();
                     renderStats();
@@ -1070,6 +1133,109 @@
                 }
             }
         };
+
+        // 匯出功能
+        document.getElementById('exportBtn').addEventListener('click', async () => {
+            try {
+                if (travelDays.length === 0) {
+                    alert('⚠️ 沒有記錄可以匯出!');
+                    return;
+                }
+
+                const exportData = {
+                    version: '1.0',
+                    exportDate: new Date().toISOString(),
+                    tripName: travelDays[0]?.tripName || '旅程',
+                    totalDays: travelDays.length,
+                    days: travelDays
+                };
+
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `旅遊記錄_${exportData.tripName}_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                alert('✅ 匯出成功! 檔案已下載到您的裝置');
+            } catch (error) {
+                alert('❌ 匯出失敗: ' + error.message);
+            }
+        });
+
+        // 匯入功能
+        document.getElementById('importBtn').addEventListener('click', () => {
+            document.getElementById('importFile').click();
+        });
+
+        document.getElementById('importFile').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            try {
+                const text = await file.text();
+                const importData = JSON.parse(text);
+
+                // 驗證資料格式
+                if (!importData.days || !Array.isArray(importData.days)) {
+                    throw new Error('檔案格式不正確');
+                }
+
+                // 詢問是否覆蓋現有資料
+                let shouldMerge = false;
+                if (travelDays.length > 0) {
+                    const choice = confirm(
+                        `目前有 ${travelDays.length} 天的記錄\n` +
+                        `匯入檔案有 ${importData.days.length} 天的記錄\n\n` +
+                        `按「確定」= 合併資料\n` +
+                        `按「取消」= 覆蓋現有資料`
+                    );
+                    shouldMerge = choice;
+
+                    if (!shouldMerge) {
+                        // 清空現有資料
+                        const transaction = db.transaction(['days'], 'readwrite');
+                        const store = transaction.objectStore('days');
+                        await store.clear();
+                    }
+                }
+
+                // 匯入資料
+                let importCount = 0;
+                for (const day of importData.days) {
+                    // 生成新的 ID 避免衝突
+                    const newDay = {
+                        ...day,
+                        id: Date.now() + importCount
+                    };
+                    await saveDayToDB(newDay);
+                    importCount++;
+                }
+
+                await loadDays();
+                renderDaysList();
+                renderStats();
+
+                // 自動填入旅程名稱
+                if (travelDays.length > 0) {
+                    document.getElementById('tripName').value = travelDays[0].tripName;
+                    document.getElementById('dayNumber').value = travelDays.length + 1;
+                }
+
+                alert(`✅ 匯入成功! 已匯入 ${importCount} 天的記錄`);
+                
+                // 清空檔案選擇
+                e.target.value = '';
+            } catch (error) {
+                alert('❌ 匯入失敗: ' + error.message + '\n請確認檔案格式正確');
+                e.target.value = '';
+            }
+        });
 
         // 渲染統計
         function renderStats() {
@@ -1112,57 +1278,101 @@
             const resultSection = document.getElementById('resultSection');
             
             loading.classList.add('active');
+            loading.querySelector('p').textContent = '正在分析照片... (0/' + travelDays.length + ' 天)';
             errorMessage.classList.remove('active');
             resultSection.classList.remove('active');
 
             try {
-                // 分析所有照片
+                // 分析所有照片 - 顯示進度
                 const daysWithDescriptions = [];
+                let analyzedDays = 0;
+                
                 for (const day of travelDays) {
+                    loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
+                    
                     const imageDescriptions = [];
-                    for (const img of day.images) {
-                        const desc = await analyzeImage(img, apiKey);
-                        imageDescriptions.push(desc);
+                    // 限制每天最多分析 5 張照片以避免超時
+                    const imagesToAnalyze = day.images.slice(0, 5);
+                    
+                    for (let i = 0; i < imagesToAnalyze.length; i++) {
+                        try {
+                            const desc = await analyzeImage(imagesToAnalyze[i], apiKey);
+                            imageDescriptions.push(desc);
+                            // 每張照片之間延遲 500ms 避免 API 限流
+                            if (i < imagesToAnalyze.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                            }
+                        } catch (error) {
+                            console.error('照片分析失敗，跳過:', error);
+                            imageDescriptions.push('精彩的照片');
+                        }
                     }
+                    
                     daysWithDescriptions.push({
                         ...day,
                         imageDescriptions
                     });
+                    
+                    analyzedDays++;
                 }
 
                 // 生成完整報告
+                loading.querySelector('p').textContent = '正在生成完整報告...';
                 const report = await generateReport(daysWithDescriptions, apiKey);
                 
                 document.getElementById('resultContent').textContent = report;
                 resultSection.classList.add('active');
             } catch (error) {
-                errorMessage.textContent = '生成失敗: ' + error.message;
+                console.error('生成錯誤:', error);
+                errorMessage.textContent = '生成失敗: ' + error.message + '\n請檢查 API Key 是否正確,或稍後再試。';
                 errorMessage.classList.add('active');
             } finally {
                 loading.classList.remove('active');
             }
         });
 
-        async function analyzeImage(imageData, apiKey) {
+        async function analyzeImage(imageData, apiKey, retries = 2) {
             const base64Data = imageData.split(',')[1];
             
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: '請用繁體中文簡短描述這張照片,30字以內。' },
-                            { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
-                        ]
-                    }],
-                    generationConfig: { temperature: 0.7, maxOutputTokens: 200 }
-                })
-            });
+            for (let attempt = 0; attempt <= retries; attempt++) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{
+                                parts: [
+                                    { text: '請用繁體中文簡短描述這張照片,30字以內。' },
+                                    { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
+                                ]
+                            }],
+                            generationConfig: { 
+                                temperature: 0.7, 
+                                maxOutputTokens: 200,
+                                timeout: 30
+                            }
+                        })
+                    });
 
-            if (!response.ok) throw new Error('圖片分析失敗');
-            const data = await response.json();
-            return data.candidates[0].content.parts[0].text;
+                    if (!response.ok) {
+                        if (attempt < retries) {
+                            await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                            continue;
+                        }
+                        throw new Error('圖片分析失敗');
+                    }
+                    
+                    const data = await response.json();
+                    return data.candidates[0].content.parts[0].text;
+                } catch (error) {
+                    if (attempt < retries) {
+                        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+                        continue;
+                    }
+                    console.error('圖片分析錯誤:', error);
+                    return '美麗的旅遊照片'; // 返回預設描述而不是失敗
+                }
+            }
         }
 
         async function generateReport(days, apiKey) {
@@ -1181,7 +1391,7 @@
 景點: ${day.attractions}
 心得: ${day.notes}`;
                 
-                if (day.imageDescriptions.length > 0) {
+                if (day.imageDescriptions && day.imageDescriptions.length > 0) {
                     prompt += `\n照片描述: ${day.imageDescriptions.join('、')}`;
                 }
             });
@@ -1196,18 +1406,30 @@
 7. 使用繁體中文
 8. 結構完整,有標題和分段`;
 
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { temperature: 0.8, maxOutputTokens: 3000 }
-                })
-            });
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: { 
+                            temperature: 0.8, 
+                            maxOutputTokens: 3000
+                        }
+                    })
+                });
 
-            if (!response.ok) throw new Error('報告生成失敗');
-            const data = await response.json();
-            return data.candidates[0].content.parts[0].text;
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error?.message || '報告生成失敗');
+                }
+                
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (error) {
+                console.error('生成報告錯誤:', error);
+                throw new Error('報告生成失敗，請檢查網路連線或 API Key');
+            }
         }
 
         // 複製功能
@@ -1218,6 +1440,64 @@
             });
         });
 
+        // 下載報告功能
+        document.getElementById('exportReportBtn').addEventListener('click', () => {
+            const text = document.getElementById('resultContent').textContent;
+            const tripName = travelDays[0]?.tripName || '旅遊報告';
+            const date = new Date().toISOString().split('T')[0];
+            
+            const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${tripName}_報告_${date}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            alert('✅ 報告已下載!');
+        });
+
+        // 清空所有記錄功能
+        document.getElementById('clearAllBtn').addEventListener('click', async () => {
+            if (!confirm('⚠️ 確定要清空所有記錄嗎?\n\n此操作無法復原!建議先匯出備份。')) {
+                return;
+            }
+
+            if (!confirm('🔴 最後確認:\n真的要刪除所有 ' + travelDays.length + ' 天的記錄嗎?')) {
+                return;
+            }
+
+            try {
+                // 清空 IndexedDB
+                const transaction = db.transaction(['days'], 'readwrite');
+                const store = transaction.objectStore('days');
+                await store.clear();
+
+                // 重新載入
+                await loadDays();
+                renderDaysList();
+                renderStats();
+
+                // 清空表單
+                document.getElementById('tripName').value = '';
+                document.getElementById('dayNumber').value = '1';
+                document.getElementById('date').value = '';
+                document.getElementById('location').value = '';
+                document.getElementById('attractions').value = '';
+                document.getElementById('notes').value = '';
+
+                // 清空表單暫存
+                localStorage.removeItem('formDraft');
+
+                alert('✅ 已清空所有記錄!');
+            } catch (error) {
+                alert('❌ 清空失敗: ' + error.message);
+            }
+        });
+
         // 初始化資料庫並載入資料
         async function initialize() {
             try {
@@ -1225,10 +1505,14 @@
                 await loadDays();
                 renderStats();
                 
-                // 如果有記錄,自動填入旅程名稱
-                if (travelDays.length > 0) {
+                // 載入表單暫存
+                loadFormDraft();
+                
+                // 如果有記錄但表單是空的,自動填入旅程名稱
+                if (travelDays.length > 0 && !document.getElementById('tripName').value) {
                     document.getElementById('tripName').value = travelDays[0].tripName;
                     document.getElementById('dayNumber').value = travelDays.length + 1;
+                    saveFormDraft();
                 }
             } catch (error) {
                 console.error('初始化失敗:', error);

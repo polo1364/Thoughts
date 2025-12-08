@@ -701,7 +701,7 @@
                     <div class="form-group">
                         <label for="tripName">🎯 旅程名稱</label>
                         <input type="text" id="tripName" placeholder="例如: 京都五日遊" required>
-                        <div class="hint">給這次旅行取個名字</div>
+                        <div class="hint">第一次填寫後會自動記住</div>
                     </div>
 
                     <div class="form-group">
@@ -730,13 +730,15 @@
                     </div>
 
                     <div class="form-group">
-                        <label>📷 今日照片</label>
+                        <label>📷 今日照片 (建議 3-5 張)</label>
                         <div class="image-upload" id="imageUpload">
                             <div style="font-size: 2em; margin-bottom: 10px;">📸</div>
                             <p>點擊或拖曳照片上傳</p>
+                            <p style="font-size: 0.9em; color: #888; margin-top: 8px;">照片會自動壓縮,建議每天上傳 3-5 張</p>
                             <input type="file" id="imageInput" multiple accept="image/*" style="display: none;">
                         </div>
                         <div class="image-preview" id="imagePreview"></div>
+                        <div class="hint">💡 每張照片會自動壓縮以加快處理速度</div>
                     </div>
 
                     <button type="submit" class="btn btn-success" style="width: 100%; padding: 15px; font-size: 1.1em;">
@@ -833,26 +835,79 @@
         });
 
         function handleFiles(files) {
-            for (let file of files) {
+            Array.from(files).forEach(file => {
                 if (file.type.startsWith('image/')) {
+                    // 顯示 loading 提示
+                    if (uploadedImages.length === 0) {
+                        imagePreview.innerHTML = '<div style="color: #667eea; padding: 10px;">📸 處理照片中...</div>';
+                        imagePreview.classList.add('active');
+                    }
+                    
                     const reader = new FileReader();
                     reader.onload = (e) => {
-                        uploadedImages.push(e.target.result);
-                        displayPreview();
+                        // 壓縮圖片
+                        compressImage(e.target.result, (compressedImage) => {
+                            uploadedImages.push(compressedImage);
+                            displayPreview();
+                        });
                     };
                     reader.readAsDataURL(file);
                 }
-            }
+            });
+        }
+
+        function compressImage(base64, callback) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // 設定最大寬高
+                const maxWidth = 1200;
+                const maxHeight = 1200;
+                let width = img.width;
+                let height = img.height;
+                
+                // 計算縮放比例
+                if (width > height) {
+                    if (width > maxWidth) {
+                        height *= maxWidth / width;
+                        width = maxWidth;
+                    }
+                } else {
+                    if (height > maxHeight) {
+                        width *= maxHeight / height;
+                        height = maxHeight;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // 壓縮品質 0.7
+                callback(canvas.toDataURL('image/jpeg', 0.7));
+            };
+            img.src = base64;
         }
 
         function displayPreview() {
             imagePreview.innerHTML = '';
+            
+            if (uploadedImages.length > 0) {
+                // 顯示照片數量
+                const countDiv = document.createElement('div');
+                countDiv.style.cssText = 'width: 100%; color: #667eea; font-weight: 600; margin-bottom: 10px;';
+                countDiv.textContent = `已上傳 ${uploadedImages.length} 張照片`;
+                imagePreview.appendChild(countDiv);
+            }
+            
             uploadedImages.forEach((img, index) => {
                 const div = document.createElement('div');
                 div.className = 'preview-item';
                 div.innerHTML = `
-                    <img src="${img}" alt="Preview">
-                    <button class="remove-image" onclick="removeImage(${index})">×</button>
+                    <img src="${img}" alt="Preview" loading="lazy">
+                    <button class="remove-image" onclick="removeImage(${index})" type="button">×</button>
                 `;
                 imagePreview.appendChild(div);
             });
@@ -871,25 +926,43 @@
         document.getElementById('dayForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            const tripName = document.getElementById('tripName').value;
+            const dayNumber = parseInt(document.getElementById('dayNumber').value);
+            const date = document.getElementById('date').value;
+            const location = document.getElementById('location').value;
+            const attractions = document.getElementById('attractions').value;
+            const notes = document.getElementById('notes').value;
+
             const dayData = {
                 id: Date.now(),
-                tripName: document.getElementById('tripName').value,
-                dayNumber: parseInt(document.getElementById('dayNumber').value),
-                date: document.getElementById('date').value,
-                location: document.getElementById('location').value,
-                attractions: document.getElementById('attractions').value,
-                notes: document.getElementById('notes').value,
+                tripName: tripName,
+                dayNumber: dayNumber,
+                date: date,
+                location: location,
+                attractions: attractions,
+                notes: notes,
                 images: [...uploadedImages]
             };
 
             travelDays.push(dayData);
             travelDays.sort((a, b) => a.dayNumber - b.dayNumber);
-            localStorage.setItem('travelDays', JSON.stringify(travelDays));
-
-            alert('✅ 記錄已儲存!');
             
-            // 清空表單
-            document.getElementById('dayForm').reset();
+            // 儲存到 localStorage
+            try {
+                localStorage.setItem('travelDays', JSON.stringify(travelDays));
+                alert('✅ 第 ' + dayNumber + ' 天的記錄已儲存!');
+            } catch (error) {
+                alert('❌ 儲存失敗: ' + error.message + '\n可能是照片太多或太大,請減少照片數量');
+                travelDays.pop(); // 移除剛加入的資料
+                return;
+            }
+            
+            // 清空表單,但保留 tripName
+            document.getElementById('dayNumber').value = dayNumber + 1; // 自動加 1
+            document.getElementById('date').value = '';
+            document.getElementById('location').value = '';
+            document.getElementById('attractions').value = '';
+            document.getElementById('notes').value = '';
             uploadedImages = [];
             imagePreview.classList.remove('active');
             imagePreview.innerHTML = '';
@@ -914,7 +987,7 @@
                 <div class="day-card">
                     <div class="day-card-header">
                         <h3>Day ${day.dayNumber} - ${day.location}</h3>
-                        <button class="btn-delete" onclick="deleteDay(${day.id})">🗑️ 刪除</button>
+                        <button type="button" class="btn-delete" onclick="deleteDay(${day.id})">🗑️ 刪除</button>
                     </div>
                     <div class="day-card-content">
                         <p><strong>📅 日期:</strong> ${day.date}</p>
@@ -1088,6 +1161,12 @@
 
         // 初始化
         renderStats();
+        
+        // 如果有記錄,自動填入旅程名稱
+        if (travelDays.length > 0) {
+            document.getElementById('tripName').value = travelDays[0].tripName;
+            document.getElementById('dayNumber').value = travelDays.length + 1;
+        }
     </script>
 </body>
 </html>

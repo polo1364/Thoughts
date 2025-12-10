@@ -889,18 +889,29 @@
                 
                 <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
                     <p style="margin: 0; color: #856404; font-size: 0.95em;">
-                        💡 <strong>提示:</strong> 使用 gemini-2.0-flash-exp 模型生成報告。<br>
-                        • AI 會分析照片內容(每天最多 3 張)<br>
-                        • 報告會基於你的心得 + 照片場景<br>
-                        • 不會自創內容,只會潤飾你寫的心得
+                        💡 <strong>提示:</strong> 使用 gemini-2.5-flash 模型生成報告。<br>
+                        • 報告會基於你的心得生成<br>
+                        • 可選擇是否分析照片(分析照片會消耗更多 API 配額)
                     </p>
                     <p style="margin: 10px 0 0 0; color: #856404; font-size: 0.9em;">
-                        ⚠️ 如果出現「網路連線失敗」錯誤,表示您的網路環境無法連接 Google API。<br>
+                        ⚠️ 如果出現「配額超過限制」錯誤:<br>
                         <strong>解決方法:</strong><br>
-                        1. 切換到其他網路 (WiFi ↔ 行動數據)<br>
-                        2. 確認不是使用 eSIM 或國際漫遊<br>
-                        3. 關閉 VPN 或切換 VPN 伺服器<br>
-                        4. 使用國內網路環境
+                        1. 取消勾選「分析照片」選項<br>
+                        2. 等待配額重置(通常是每天或每小時)<br>
+                        3. 或使用新的 API Key
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                        <input type="checkbox" id="analyzePhotos" checked style="width: 18px; height: 18px; cursor: pointer;">
+                        <span style="font-weight: 600; color: #333;">
+                            📸 分析照片 (會使用更多 API 配額,但報告更豐富)
+                        </span>
+                    </label>
+                    <p style="margin: 10px 0 0 0; color: #666; font-size: 0.9em; padding-left: 28px;">
+                        勾選: 分析每天最多 3 張照片,生成時間約 30-60 秒<br>
+                        不勾選: 僅基於文字心得生成,速度快,配額消耗少
                     </p>
                 </div>
 
@@ -1502,51 +1513,63 @@
             const resultSection = document.getElementById('resultSection');
             
             loading.classList.add('active');
-            loading.querySelector('p').textContent = '正在分析照片...';
             errorMessage.classList.remove('active');
             resultSection.classList.remove('active');
+            
+            const shouldAnalyzePhotos = document.getElementById('analyzePhotos').checked;
 
             try {
-                // 分析所有照片
-                const daysWithDescriptions = [];
-                let analyzedDays = 0;
+                let daysWithDescriptions = [];
                 
-                for (const day of travelDays) {
-                    if (day.images && day.images.length > 0) {
-                        loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
-                        
-                        const imageDescriptions = [];
-                        // 分析前 3 張照片
-                        const imagesToAnalyze = day.images.slice(0, 3);
-                        
-                        for (let i = 0; i < imagesToAnalyze.length; i++) {
-                            try {
-                                const desc = await analyzeImage(imagesToAnalyze[i], apiKey);
-                                imageDescriptions.push(desc);
-                                
-                                // 延遲避免 API 限流
-                                if (i < imagesToAnalyze.length - 1) {
-                                    await new Promise(resolve => setTimeout(resolve, 800));
+                if (shouldAnalyzePhotos) {
+                    // 分析所有照片
+                    loading.querySelector('p').textContent = '正在分析照片...';
+                    let analyzedDays = 0;
+                    
+                    for (const day of travelDays) {
+                        if (day.images && day.images.length > 0) {
+                            loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
+                            
+                            const imageDescriptions = [];
+                            // 分析前 3 張照片
+                            const imagesToAnalyze = day.images.slice(0, 3);
+                            
+                            for (let i = 0; i < imagesToAnalyze.length; i++) {
+                                try {
+                                    const desc = await analyzeImage(imagesToAnalyze[i], apiKey);
+                                    imageDescriptions.push(desc);
+                                    
+                                    // 延遲避免 API 限流
+                                    if (i < imagesToAnalyze.length - 1) {
+                                        await new Promise(resolve => setTimeout(resolve, 800));
+                                    }
+                                } catch (error) {
+                                    console.error('照片分析失敗:', error);
+                                    imageDescriptions.push('照片');
                                 }
-                            } catch (error) {
-                                console.error('照片分析失敗:', error);
-                                imageDescriptions.push('照片');
                             }
+                            
+                            daysWithDescriptions.push({
+                                ...day,
+                                imageDescriptions
+                            });
+                        } else {
+                            // 沒有照片的日子
+                            daysWithDescriptions.push({
+                                ...day,
+                                imageDescriptions: []
+                            });
                         }
                         
-                        daysWithDescriptions.push({
-                            ...day,
-                            imageDescriptions
-                        });
-                    } else {
-                        // 沒有照片的日子
-                        daysWithDescriptions.push({
-                            ...day,
-                            imageDescriptions: []
-                        });
+                        analyzedDays++;
                     }
-                    
-                    analyzedDays++;
+                } else {
+                    // 不分析照片,直接使用文字資訊
+                    loading.querySelector('p').textContent = '正在生成旅遊報告...';
+                    daysWithDescriptions = travelDays.map(day => ({
+                        ...day,
+                        imageDescriptions: []
+                    }));
                 }
 
                 // 生成完整報告
@@ -1584,7 +1607,7 @@
             const base64Data = imageData.split(',')[1];
             
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                     body: JSON.stringify({
@@ -1668,7 +1691,7 @@ ${day.notes}
 請嚴格遵守以上要求,特別是第3點,不要自己創作任何內容。`;
 
             try {
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash')}:generateContent`;
                 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -1981,7 +2004,7 @@ ${day.notes}
         async function analyzeImageForNotes(imageData, apiKey) {
             const base64Data = imageData.split(',')[1];
             
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash')}:generateContent`;
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 
@@ -2025,7 +2048,7 @@ ${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
 6. 使用繁體中文
 7. 約 250-300 字`;
 
-            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash')}:generateContent`;
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 
@@ -2070,8 +2093,8 @@ ${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
                     console.log('可用模型:', models);
                 }
 
-                // 測試 gemini-2.0-flash-exp 模型
-                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+                // 測試 gemini-2.5-flash 模型
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.5-flash')}:generateContent`;
 
                 const response = await fetch(endpoint, {
                     method: 'POST',
@@ -2086,7 +2109,7 @@ ${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
 
                 let statusInfo = `HTTP 狀態碼: ${response.status}\n`;
                 statusInfo += `狀態文字: ${response.statusText}\n`;
-                statusInfo += `使用模型: gemini-2.0-flash-exp\n\n`;
+                statusInfo += `使用模型: gemini-2.5-flash\n\n`;
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => null);

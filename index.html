@@ -910,10 +910,37 @@
 
                 <div class="result-section" id="resultSection">
                     <h2 style="margin-bottom: 20px; color: #667eea;">✨ 你的旅遊報告</h2>
-                    <div class="result-content" id="resultContent"></div>
-                    <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                        <button class="btn btn-primary" id="copyBtn" style="flex: 1; min-width: 150px;">📋 複製報告</button>
-                        <button class="btn btn-success" id="exportReportBtn" style="flex: 1; min-width: 150px;">💾 下載報告</button>
+                    
+                    <!-- 可編輯的文字區域 -->
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 10px; font-weight: 600; color: #333;">
+                            📝 報告內容 (可編輯)
+                        </label>
+                        <textarea id="editableContent" rows="20" style="width: 100%; padding: 15px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1em; line-height: 1.8; font-family: inherit; resize: vertical;"></textarea>
+                    </div>
+
+                    <!-- 原始報告內容 (隱藏) -->
+                    <div class="result-content" id="resultContent" style="display: none;"></div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                        <button class="btn btn-primary" id="regenerateBtn">
+                            🔄 重新生成報告
+                        </button>
+                        <button class="btn btn-primary" id="copyBtn">
+                            📋 複製報告
+                        </button>
+                        <button class="btn btn-success" id="exportReportBtn">
+                            💾 下載報告
+                        </button>
+                    </div>
+
+                    <div style="padding: 15px; background: #e3f2fd; border-radius: 10px; border-left: 4px solid #2196f3;">
+                        <p style="margin: 0; color: #1565c0; font-size: 0.95em;">
+                            💡 <strong>提示:</strong><br>
+                            • 可以直接在文字框中編輯內容<br>
+                            • 點「🔄 重新生成」會用最新的記錄重新生成報告<br>
+                            • 編輯後的內容會在複製和下載時使用
+                        </p>
                     </div>
                 </div>
             </div>
@@ -1061,6 +1088,14 @@
                     renderDaysList();
                 } else if (tabName === 'report') {
                     renderStats();
+                    
+                    // 檢查是否有暫存的報告
+                    const savedReport = localStorage.getItem('savedReport');
+                    if (savedReport && document.getElementById('editableContent').value === '') {
+                        document.getElementById('editableContent').value = savedReport;
+                        document.getElementById('resultContent').textContent = savedReport;
+                        document.getElementById('resultSection').classList.add('active');
+                    }
                 }
             });
         });
@@ -1478,7 +1513,14 @@
                 // 生成完整報告
                 const report = await generateReport(daysData, apiKey);
                 
+                // 存入隱藏的 div (原始報告)
                 document.getElementById('resultContent').textContent = report;
+                // 同時顯示在可編輯的 textarea
+                document.getElementById('editableContent').value = report;
+                
+                // 暫存報告內容
+                localStorage.setItem('savedReport', report);
+                
                 resultSection.classList.add('active');
             } catch (error) {
                 console.error('生成錯誤:', error);
@@ -1614,9 +1656,30 @@
             }
         }
 
-        // 複製功能
+        // 重新生成報告
+        document.getElementById('regenerateBtn').addEventListener('click', async () => {
+            // 確認是否要重新生成
+            const shouldRegenerate = await showConfirm(
+                '🔄 確定要重新生成報告嗎?\n\n目前編輯的內容將會被覆蓋。\n\n建議先複製或下載目前的內容。'
+            );
+            
+            if (!shouldRegenerate) {
+                return;
+            }
+            
+            // 觸發生成報告按鈕
+            document.getElementById('generateReportBtn').click();
+        });
+
+        // 監聽報告編輯,實時暫存
+        document.getElementById('editableContent').addEventListener('input', () => {
+            const content = document.getElementById('editableContent').value;
+            localStorage.setItem('savedReport', content);
+        });
+
+        // 複製功能 (使用可編輯的內容)
         document.getElementById('copyBtn').addEventListener('click', async () => {
-            const text = document.getElementById('resultContent').textContent;
+            const text = document.getElementById('editableContent').value;
             try {
                 await navigator.clipboard.writeText(text);
                 await showAlert('✅ 已複製到剪貼簿!');
@@ -1625,9 +1688,9 @@
             }
         });
 
-        // 下載報告功能
+        // 下載報告功能 (使用可編輯的內容)
         document.getElementById('exportReportBtn').addEventListener('click', async () => {
-            const text = document.getElementById('resultContent').textContent;
+            const text = document.getElementById('editableContent').value;
             const tripName = travelDays[0]?.tripName || '旅遊報告';
             const date = new Date().toISOString().split('T')[0];
             
@@ -1676,6 +1739,12 @@
 
                 // 清空表單暫存
                 localStorage.removeItem('formDraft');
+                
+                // 清除報告暫存
+                localStorage.removeItem('savedReport');
+                document.getElementById('editableContent').value = '';
+                document.getElementById('resultContent').textContent = '';
+                document.getElementById('resultSection').classList.remove('active');
 
                 await showAlert('✅ 已清空所有記錄!');
             } catch (error) {
@@ -2034,6 +2103,14 @@ ${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
                 
                 // 載入表單暫存
                 loadFormDraft();
+                
+                // 載入暫存的報告
+                const savedReport = localStorage.getItem('savedReport');
+                if (savedReport) {
+                    document.getElementById('editableContent').value = savedReport;
+                    document.getElementById('resultContent').textContent = savedReport;
+                    document.getElementById('resultSection').classList.add('active');
+                }
                 
                 // 如果有記錄但表單是空的,自動填入旅程名稱
                 if (travelDays.length > 0 && !document.getElementById('tripName').value) {

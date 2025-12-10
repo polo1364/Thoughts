@@ -889,7 +889,10 @@
                 
                 <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
                     <p style="margin: 0; color: #856404; font-size: 0.95em;">
-                        💡 <strong>提示:</strong> 目前使用 gemini-2.0-flash-exp 模型。報告將基於您填寫的地點、景點和心得生成。
+                        💡 <strong>提示:</strong> 使用 gemini-2.0-flash-exp 模型生成報告。<br>
+                        • AI 會分析照片內容(每天最多 3 張)<br>
+                        • 報告會基於你的心得 + 照片場景<br>
+                        • 不會自創內容,只會潤飾你寫的心得
                     </p>
                     <p style="margin: 10px 0 0 0; color: #856404; font-size: 0.9em;">
                         ⚠️ 如果出現「網路連線失敗」錯誤,表示您的網路環境無法連接 Google API。<br>
@@ -1499,19 +1502,56 @@
             const resultSection = document.getElementById('resultSection');
             
             loading.classList.add('active');
-            loading.querySelector('p').textContent = '正在生成旅遊報告...';
+            loading.querySelector('p').textContent = '正在分析照片...';
             errorMessage.classList.remove('active');
             resultSection.classList.remove('active');
 
             try {
-                // 不分析照片,直接用文字資訊生成報告
-                const daysData = travelDays.map(day => ({
-                    ...day,
-                    imageDescriptions: [] // 空陣列,不使用照片描述
-                }));
+                // 分析所有照片
+                const daysWithDescriptions = [];
+                let analyzedDays = 0;
+                
+                for (const day of travelDays) {
+                    if (day.images && day.images.length > 0) {
+                        loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
+                        
+                        const imageDescriptions = [];
+                        // 分析前 3 張照片
+                        const imagesToAnalyze = day.images.slice(0, 3);
+                        
+                        for (let i = 0; i < imagesToAnalyze.length; i++) {
+                            try {
+                                const desc = await analyzeImage(imagesToAnalyze[i], apiKey);
+                                imageDescriptions.push(desc);
+                                
+                                // 延遲避免 API 限流
+                                if (i < imagesToAnalyze.length - 1) {
+                                    await new Promise(resolve => setTimeout(resolve, 800));
+                                }
+                            } catch (error) {
+                                console.error('照片分析失敗:', error);
+                                imageDescriptions.push('照片');
+                            }
+                        }
+                        
+                        daysWithDescriptions.push({
+                            ...day,
+                            imageDescriptions
+                        });
+                    } else {
+                        // 沒有照片的日子
+                        daysWithDescriptions.push({
+                            ...day,
+                            imageDescriptions: []
+                        });
+                    }
+                    
+                    analyzedDays++;
+                }
 
                 // 生成完整報告
-                const report = await generateReport(daysData, apiKey);
+                loading.querySelector('p').textContent = '正在生成旅遊報告...';
+                const report = await generateReport(daysWithDescriptions, apiKey);
                 
                 // 存入隱藏的 div (原始報告)
                 document.getElementById('resultContent').textContent = report;
@@ -1577,7 +1617,7 @@
         async function generateReport(days, apiKey) {
             const tripName = days[0].tripName;
             
-            let prompt = `請根據以下多日旅遊記錄,生成一篇完整的旅遊報告,約800-1200字:
+            let prompt = `請根據以下多日旅遊記錄,生成一篇完整的旅遊報告:
 
 旅程名稱: ${tripName}
 總共天數: ${days.length} 天
@@ -1585,20 +1625,47 @@
 每日詳細記錄:\n`;
 
             days.forEach(day => {
-                prompt += `\nDay ${day.dayNumber} (${day.date})
+                prompt += `\n=== Day ${day.dayNumber} (${day.date}) ===
 地點: ${day.location}
-景點: ${day.attractions}
-心得: ${day.notes}`;
+景點: ${day.attractions}`;
+                
+                // 如果有照片描述,加入提示
+                if (day.imageDescriptions && day.imageDescriptions.length > 0) {
+                    prompt += `\n照片內容: ${day.imageDescriptions.join('、')}`;
+                }
+                
+                prompt += `\n我的心得:
+${day.notes}
+`;
             });
 
-            prompt += `\n\n要求:
-1. 用第一人稱撰寫完整的旅遊報告
-2. 要有開場白,介紹這次旅行
-3. 按天數順序描述每天的行程和感受
-4. 最後要有總結,分享整體感想和推薦
-5. 語氣輕鬆自然,像是在寫遊記
-6. 使用繁體中文
-7. 結構完整,有標題和分段`;
+            prompt += `\n\n【重要要求】:
+1. 用第一人稱撰寫,語氣輕鬆自然
+2. 報告結構:
+   - 開頭: 簡短介紹這次旅行(1-2句話)
+   - 內容: 按天數順序描述每天行程
+   - 結尾: 總結整體感想(1-2句話)
+
+3. 【最重要】每天的內容必須:
+   - 完全依照「我的心得」的內容來寫
+   - 如果有「照片內容」,可以適當融入照片中看到的場景或物品
+   - 但不要添加我心得中沒有提到的感受或評價
+   - 不要自己編造或想像任何內容
+   - 如果心得很簡短,報告的該天內容也要簡短
+   - 如果心得很詳細,報告的該天內容也要詳細
+   - 只整理和潤飾我寫的心得,照片資訊只是輔助參考
+
+4. 照片內容的使用原則:
+   - 只用來補充場景描述(例如:天氣、環境、建築外觀)
+   - 不要用照片內容來創造我沒說過的感受
+   - 如果心得已經很完整,照片資訊可以不用
+
+5. 整體風格:
+   - 保持我原本心得的語氣和感受
+   - 使用繁體中文
+   - 適當分段,易於閱讀
+   
+請嚴格遵守以上要求,特別是第3點,不要自己創作任何內容。`;
 
             try {
                 const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;

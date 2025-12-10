@@ -1022,7 +1022,7 @@
         // 初始化 IndexedDB
         function initDB() {
             return new Promise((resolve, reject) => {
-                const request = indexedDB.open('TravelDiaryDB', 1);
+                const request = indexedDB.open('TravelDiaryDB', 2); // 版本升級到 2
                 
                 request.onerror = () => reject(request.error);
                 request.onsuccess = () => {
@@ -1032,8 +1032,15 @@
                 
                 request.onupgradeneeded = (event) => {
                     db = event.target.result;
+                    
+                    // 建立每日記錄的 store
                     if (!db.objectStoreNames.contains('days')) {
                         db.createObjectStore('days', { keyPath: 'id' });
+                    }
+                    
+                    // 建立報告儲存的 store
+                    if (!db.objectStoreNames.contains('reports')) {
+                        db.createObjectStore('reports', { keyPath: 'id' });
                     }
                 };
             });
@@ -1051,6 +1058,56 @@
                     resolve(travelDays);
                 };
                 request.onerror = () => reject(request.error);
+            });
+        }
+
+        // 儲存報告到 IndexedDB
+        function saveReport(content) {
+            return new Promise((resolve, reject) => {
+                try {
+                    const transaction = db.transaction(['reports'], 'readwrite');
+                    const store = transaction.objectStore('reports');
+                    const request = store.put({ id: 'latest', content: content, timestamp: Date.now() });
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                } catch (error) {
+                    reject(error);
+                }
+            });
+        }
+
+        // 讀取報告從 IndexedDB
+        function loadReport() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const transaction = db.transaction(['reports'], 'readonly');
+                    const store = transaction.objectStore('reports');
+                    const request = store.get('latest');
+                    
+                    request.onsuccess = () => {
+                        resolve(request.result?.content || null);
+                    };
+                    request.onerror = () => reject(request.error);
+                } catch (error) {
+                    resolve(null); // 如果出錯就返回 null
+                }
+            });
+        }
+
+        // 刪除報告從 IndexedDB
+        function deleteReport() {
+            return new Promise((resolve, reject) => {
+                try {
+                    const transaction = db.transaction(['reports'], 'readwrite');
+                    const store = transaction.objectStore('reports');
+                    const request = store.delete('latest');
+                    
+                    request.onsuccess = () => resolve();
+                    request.onerror = () => reject(request.error);
+                } catch (error) {
+                    resolve(); // 忽略錯誤
+                }
             });
         }
 
@@ -1104,12 +1161,14 @@
                     renderStats();
                     
                     // 檢查是否有暫存的報告
-                    const savedReport = localStorage.getItem('savedReport');
-                    if (savedReport && document.getElementById('editableContent').value === '') {
-                        document.getElementById('editableContent').value = savedReport;
-                        document.getElementById('resultContent').textContent = savedReport;
-                        document.getElementById('resultSection').classList.add('active');
-                    }
+                    (async () => {
+                        const savedReport = await loadReport();
+                        if (savedReport && document.getElementById('editableContent').value === '') {
+                            document.getElementById('editableContent').value = savedReport;
+                            document.getElementById('resultContent').textContent = savedReport;
+                            document.getElementById('resultSection').classList.add('active');
+                        }
+                    })();
                 }
             });
         });
@@ -1581,8 +1640,13 @@
                 // 同時顯示在可編輯的 textarea
                 document.getElementById('editableContent').value = report;
                 
-                // 暫存報告內容
-                localStorage.setItem('savedReport', report);
+                // 暫存報告內容到 IndexedDB
+                try {
+                    await saveReport(report);
+                } catch (error) {
+                    console.error('報告暫存失敗:', error);
+                    // 繼續執行,不中斷流程
+                }
                 
                 resultSection.classList.add('active');
             } catch (error) {
@@ -1762,9 +1826,19 @@ ${day.notes}
         });
 
         // 監聽報告編輯,實時暫存
+        let saveTimeout;
         document.getElementById('editableContent').addEventListener('input', () => {
             const content = document.getElementById('editableContent').value;
-            localStorage.setItem('savedReport', content);
+            
+            // 使用防抖,避免頻繁寫入
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                try {
+                    await saveReport(content);
+                } catch (error) {
+                    console.error('報告暫存失敗:', error);
+                }
+            }, 1000); // 1 秒後才儲存
         });
 
         // 複製功能 (使用可編輯的內容)
@@ -1831,7 +1905,7 @@ ${day.notes}
                 localStorage.removeItem('formDraft');
                 
                 // 清除報告暫存
-                localStorage.removeItem('savedReport');
+                await deleteReport();
                 document.getElementById('editableContent').value = '';
                 document.getElementById('resultContent').textContent = '';
                 document.getElementById('resultSection').classList.remove('active');
@@ -2195,7 +2269,7 @@ ${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
                 loadFormDraft();
                 
                 // 載入暫存的報告
-                const savedReport = localStorage.getItem('savedReport');
+                const savedReport = await loadReport();
                 if (savedReport) {
                     document.getElementById('editableContent').value = savedReport;
                     document.getElementById('resultContent').textContent = savedReport;

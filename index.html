@@ -671,6 +671,100 @@
             font-weight: 600;
             letter-spacing: 0.5px;
         }
+        /* 自訂彈窗樣式 */
+        .custom-modal {
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s;
+        }
+
+        .custom-modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            animation: slideDown 0.3s;
+        }
+
+        .modal-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .modal-message {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .modal-btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .modal-btn-danger {
+            background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+            color: white;
+        }
+
+        .modal-btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .modal-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideDown {
+            from { 
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to { 
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
     </style>
 </head>
 <body>
@@ -737,6 +831,12 @@
                     <div class="form-group">
                         <label for="notes">💭 今日心得</label>
                         <textarea id="notes" placeholder="描述今天的感受、印象深刻的事..." required></textarea>
+                        <button type="button" class="btn btn-success" id="aiGenerateBtn" style="margin-top: 10px; padding: 12px; background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);">
+                            ✨ AI 根據照片生成心得
+                        </button>
+                        <div style="font-size: 0.9em; color: #666; margin-top: 8px;">
+                            💡 上傳照片後,點此按鈕讓 AI 自動分析照片並生成心得
+                        </div>
                     </div>
 
                     <div class="form-group">
@@ -786,6 +886,20 @@
                         🔍 測試 API Key
                     </button>
                 </div>
+                
+                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+                    <p style="margin: 0; color: #856404; font-size: 0.95em;">
+                        💡 <strong>提示:</strong> 目前使用 gemini-2.0-flash-exp 模型。報告將基於您填寫的地點、景點和心得生成。
+                    </p>
+                    <p style="margin: 10px 0 0 0; color: #856404; font-size: 0.9em;">
+                        ⚠️ 如果出現「網路連線失敗」錯誤,表示您的網路環境無法連接 Google API。<br>
+                        <strong>解決方法:</strong><br>
+                        1. 切換到其他網路 (WiFi ↔ 行動數據)<br>
+                        2. 確認不是使用 eSIM 或國際漫遊<br>
+                        3. 關閉 VPN 或切換 VPN 伺服器<br>
+                        4. 使用國內網路環境
+                    </p>
+                </div>
 
                 <div class="loading" id="loading">
                     <div class="spinner"></div>
@@ -806,7 +920,60 @@
         </div>
     </div>
 
+    <!-- 自訂彈窗 -->
+    <div class="custom-modal" id="customModal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle"></div>
+            <div class="modal-message" id="modalMessage"></div>
+            <div class="modal-buttons" id="modalButtons"></div>
+        </div>
+    </div>
+
     <script>
+        // 自訂彈窗函數替代 alert 和 confirm
+        function showAlert(message, title = '提示') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalMessage = document.getElementById('modalMessage');
+                const modalButtons = document.getElementById('modalButtons');
+
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                modalButtons.innerHTML = '<button class="modal-btn modal-btn-primary" onclick="closeModal()">確定</button>';
+                
+                modal.classList.add('active');
+                
+                window.closeModal = () => {
+                    modal.classList.remove('active');
+                    resolve(true);
+                };
+            });
+        }
+
+        function showConfirm(message, title = '確認') {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('customModal');
+                const modalTitle = document.getElementById('modalTitle');
+                const modalMessage = document.getElementById('modalMessage');
+                const modalButtons = document.getElementById('modalButtons');
+
+                modalTitle.textContent = title;
+                modalMessage.textContent = message;
+                modalButtons.innerHTML = `
+                    <button class="modal-btn modal-btn-secondary" onclick="closeModalWithResult(false)">取消</button>
+                    <button class="modal-btn modal-btn-danger" onclick="closeModalWithResult(true)">確定</button>
+                `;
+                
+                modal.classList.add('active');
+                
+                window.closeModalWithResult = (result) => {
+                    modal.classList.remove('active');
+                    resolve(result);
+                };
+            });
+        }
+
         let uploadedImages = [];
         let travelDays = [];
         let db;
@@ -1086,7 +1253,7 @@
             try {
                 await saveDayToDB(dayData);
                 await loadDays();
-                alert('✅ 第 ' + dayNumber + ' 天的記錄已儲存!');
+                await showAlert('✅ 第 ' + dayNumber + ' 天的記錄已儲存!');
                 
                 // 清空表單,但保留 tripName
                 document.getElementById('dayNumber').value = dayNumber + 1;
@@ -1101,7 +1268,7 @@
                 // 儲存新的表單狀態
                 saveFormDraft();
             } catch (error) {
-                alert('❌ 儲存失敗: ' + error.message);
+                await showAlert('❌ 儲存失敗: ' + error.message);
             }
         });
 
@@ -1141,14 +1308,14 @@
         }
 
         window.deleteDay = async function(id) {
-            if (confirm('確定要刪除這一天的記錄嗎?')) {
+            if (await showConfirm('確定要刪除這一天的記錄嗎?')) {
                 try {
                     await deleteDayFromDB(id);
                     await loadDays();
                     renderDaysList();
                     renderStats();
                 } catch (error) {
-                    alert('刪除失敗: ' + error.message);
+                    await showAlert('刪除失敗: ' + error.message);
                 }
             }
         };
@@ -1157,7 +1324,7 @@
         document.getElementById('exportBtn').addEventListener('click', async () => {
             try {
                 if (travelDays.length === 0) {
-                    alert('⚠️ 沒有記錄可以匯出!');
+                    await showAlert('⚠️ 沒有記錄可以匯出!');
                     return;
                 }
 
@@ -1181,9 +1348,9 @@
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
 
-                alert('✅ 匯出成功! 檔案已下載到您的裝置');
+                await showAlert('✅ 匯出成功! 檔案已下載到您的裝置');
             } catch (error) {
-                alert('❌ 匯出失敗: ' + error.message);
+                await showAlert('❌ 匯出失敗: ' + error.message);
             }
         });
 
@@ -1208,7 +1375,7 @@
                 // 詢問是否覆蓋現有資料
                 let shouldMerge = false;
                 if (travelDays.length > 0) {
-                    const choice = confirm(
+                    const choice = await showConfirm(
                         `目前有 ${travelDays.length} 天的記錄\n` +
                         `匯入檔案有 ${importData.days.length} 天的記錄\n\n` +
                         `按「確定」= 合併資料\n` +
@@ -1251,7 +1418,7 @@
                 // 清空檔案選擇
                 e.target.value = '';
             } catch (error) {
-                alert('❌ 匯入失敗: ' + error.message + '\n請確認檔案格式正確');
+                await showAlert('❌ 匯入失敗: ' + error.message + '\n請確認檔案格式正確');
                 e.target.value = '';
             }
         });
@@ -1283,12 +1450,12 @@
         document.getElementById('generateReportBtn').addEventListener('click', async () => {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) {
-                alert('請先輸入 API Key!');
+                await showAlert('請先輸入 API Key!');
                 return;
             }
 
             if (travelDays.length === 0) {
-                alert('請先添加至少一天的記錄!');
+                await showAlert('請先添加至少一天的記錄!');
                 return;
             }
 
@@ -1297,55 +1464,19 @@
             const resultSection = document.getElementById('resultSection');
             
             loading.classList.add('active');
-            loading.querySelector('p').textContent = '正在分析照片... (0/' + travelDays.length + ' 天)';
+            loading.querySelector('p').textContent = '正在生成旅遊報告...';
             errorMessage.classList.remove('active');
             resultSection.classList.remove('active');
 
             try {
-                // 分析所有照片 - 顯示進度
-                const daysWithDescriptions = [];
-                let analyzedDays = 0;
-                
-                for (const day of travelDays) {
-                    loading.querySelector('p').textContent = `正在分析第 ${day.dayNumber} 天的照片... (${analyzedDays + 1}/${travelDays.length})`;
-                    
-                    const imageDescriptions = [];
-                    // 只分析前 3 張照片,減少時間
-                    const imagesToAnalyze = day.images.slice(0, 3);
-                    
-                    if (imagesToAnalyze.length > 0) {
-                        // 嘗試分析照片,但如果失敗就跳過
-                        for (let i = 0; i < imagesToAnalyze.length; i++) {
-                            try {
-                                const desc = await Promise.race([
-                                    analyzeImage(imagesToAnalyze[i], apiKey),
-                                    new Promise((_, reject) => 
-                                        setTimeout(() => reject(new Error('timeout')), 15000)
-                                    )
-                                ]);
-                                imageDescriptions.push(desc);
-                                // 每張照片之間延遲 800ms
-                                if (i < imagesToAnalyze.length - 1) {
-                                    await new Promise(resolve => setTimeout(resolve, 800));
-                                }
-                            } catch (error) {
-                                console.error('照片分析失敗，跳過:', error.message);
-                                // 跳過失敗的照片
-                            }
-                        }
-                    }
-                    
-                    daysWithDescriptions.push({
-                        ...day,
-                        imageDescriptions
-                    });
-                    
-                    analyzedDays++;
-                }
+                // 不分析照片,直接用文字資訊生成報告
+                const daysData = travelDays.map(day => ({
+                    ...day,
+                    imageDescriptions: [] // 空陣列,不使用照片描述
+                }));
 
                 // 生成完整報告
-                loading.querySelector('p').textContent = '正在生成完整報告...';
-                const report = await generateReport(daysWithDescriptions, apiKey);
+                const report = await generateReport(daysData, apiKey);
                 
                 document.getElementById('resultContent').textContent = report;
                 resultSection.classList.add('active');
@@ -1356,8 +1487,8 @@
                 if (error.message.includes('Failed to fetch') || error.message.includes('Load failed')) {
                     errorMsg += '\n\n💡 建議:\n';
                     errorMsg += '1. 檢查網路連線\n';
-                    errorMsg += '2. 減少照片數量(每天 2-3 張)\n';
-                    errorMsg += '3. 切換到更穩定的網路環境';
+                    errorMsg += '2. 切換到 WiFi 網路\n';
+                    errorMsg += '3. 稍後再試';
                 }
                 
                 errorMessage.textContent = errorMsg;
@@ -1371,9 +1502,9 @@
             const base64Data = imageData.split(',')[1];
             
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
                     body: JSON.stringify({
                         contents: [{
                             parts: [
@@ -1416,63 +1547,67 @@
 地點: ${day.location}
 景點: ${day.attractions}
 心得: ${day.notes}`;
-                
-                if (day.imageDescriptions && day.imageDescriptions.length > 0) {
-                    prompt += `\n照片描述: ${day.imageDescriptions.join('、')}`;
-                }
             });
 
             prompt += `\n\n要求:
 1. 用第一人稱撰寫完整的旅遊報告
 2. 要有開場白,介紹這次旅行
 3. 按天數順序描述每天的行程和感受
-4. 自然融入照片描述的內容
-5. 最後要有總結,分享整體感想和推薦
-6. 語氣輕鬆自然,像是在寫遊記
-7. 使用繁體中文
-8. 結構完整,有標題和分段`;
+4. 最後要有總結,分享整體感想和推薦
+5. 語氣輕鬆自然,像是在寫遊記
+6. 使用繁體中文
+7. 結構完整,有標題和分段`;
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+                
+                const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-goog-api-key': apiKey,
+                    },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: { 
-                            temperature: 0.8, 
-                            maxOutputTokens: 3000
-                        }
-                    })
+                    }),
                 });
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => null);
                     
+                    let errorMsg = '';
                     if (response.status === 400) {
-                        throw new Error('❌ API Key 錯誤或請求格式不正確\n\n請確認:\n1. API Key 是否正確輸入\n2. API Key 是否已啟用 Gemini API');
+                        errorMsg = '❌ API Key 錯誤或請求格式不正確';
                     } else if (response.status === 403) {
-                        throw new Error('❌ API Key 無效或已過期\n\n請到 Google AI Studio 重新取得 API Key:\nhttps://aistudio.google.com/app/apikey');
+                        errorMsg = '❌ API Key 無效或已過期';
                     } else if (response.status === 429) {
-                        throw new Error('⚠️ API 請求次數超過限制\n\n免費版限制:\n- 每分鐘 15 次請求\n- 每天 1500 次請求\n\n請稍後再試');
-                    } else if (response.status === 500 || response.status === 503) {
-                        throw new Error('⚠️ Google 伺服器暫時無法使用\n\n請稍後再試');
+                        errorMsg = '⚠️ API 請求次數超過限制';
+                    } else if (response.status >= 500) {
+                        errorMsg = '⚠️ Google 伺服器錯誤';
+                    } else {
+                        errorMsg = `API 錯誤 (${response.status})`;
                     }
                     
-                    throw new Error(`API 錯誤 (${response.status}): ${errorData?.error?.message || '未知錯誤'}`);
+                    if (errorData?.error?.message) {
+                        errorMsg += '\n\n' + errorData.error.message;
+                    }
+                    
+                    throw new Error(errorMsg);
                 }
                 
                 const data = await response.json();
                 
                 if (!data.candidates || !data.candidates[0]) {
-                    throw new Error('API 未返回有效結果,請重試');
+                    throw new Error('API 未返回有效結果');
                 }
                 
                 return data.candidates[0].content.parts[0].text;
             } catch (error) {
                 console.error('生成報告錯誤:', error);
                 
-                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                    throw new Error('🌐 網路連線失敗\n\n請檢查:\n1. 網路連線是否正常\n2. 是否被防火牆阻擋');
+                // 網路錯誤
+                if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
+                    throw new Error('🌐 網路連線失敗\n\n可能原因:\n• 網路不穩定\n• 防火牆阻擋\n• VPN 問題\n• ISP 限制\n\n建議:\n• 切換網路(WiFi/行動數據)\n• 關閉 VPN\n• 檢查防火牆設定');
                 }
                 
                 throw error;
@@ -1480,15 +1615,18 @@
         }
 
         // 複製功能
-        document.getElementById('copyBtn').addEventListener('click', () => {
+        document.getElementById('copyBtn').addEventListener('click', async () => {
             const text = document.getElementById('resultContent').textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                alert('✅ 已複製到剪貼簿!');
-            });
+            try {
+                await navigator.clipboard.writeText(text);
+                await showAlert('✅ 已複製到剪貼簿!');
+            } catch (error) {
+                await showAlert('❌ 複製失敗: ' + error.message);
+            }
         });
 
         // 下載報告功能
-        document.getElementById('exportReportBtn').addEventListener('click', () => {
+        document.getElementById('exportReportBtn').addEventListener('click', async () => {
             const text = document.getElementById('resultContent').textContent;
             const tripName = travelDays[0]?.tripName || '旅遊報告';
             const date = new Date().toISOString().split('T')[0];
@@ -1504,16 +1642,16 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
             
-            alert('✅ 報告已下載!');
+            await showAlert('✅ 報告已下載!');
         });
 
         // 清空所有記錄功能
         document.getElementById('clearAllBtn').addEventListener('click', async () => {
-            if (!confirm('⚠️ 確定要清空所有記錄嗎?\n\n此操作無法復原!建議先匯出備份。')) {
+            if (!await showConfirm('⚠️ 確定要清空所有記錄嗎?\n\n此操作無法復原!建議先匯出備份。')) {
                 return;
             }
 
-            if (!confirm('🔴 最後確認:\n真的要刪除所有 ' + travelDays.length + ' 天的記錄嗎?')) {
+            if (!await showConfirm('🔴 最後確認:\n真的要刪除所有 ' + travelDays.length + ' 天的記錄嗎?')) {
                 return;
             }
 
@@ -1539,14 +1677,14 @@
                 // 清空表單暫存
                 localStorage.removeItem('formDraft');
 
-                alert('✅ 已清空所有記錄!');
+                await showAlert('✅ 已清空所有記錄!');
             } catch (error) {
-                alert('❌ 清空失敗: ' + error.message);
+                await showAlert('❌ 清空失敗: ' + error.message);
             }
         });
 
         // 匯出當前草稿
-        document.getElementById('exportDraftBtn').addEventListener('click', () => {
+        document.getElementById('exportDraftBtn').addEventListener('click', async () => {
             const draft = {
                 tripName: document.getElementById('tripName').value,
                 dayNumber: document.getElementById('dayNumber').value,
@@ -1561,7 +1699,7 @@
 
             // 檢查是否有內容
             if (!draft.tripName && !draft.location && !draft.notes) {
-                alert('⚠️ 目前沒有可以匯出的草稿內容');
+                await showAlert('⚠️ 目前沒有可以匯出的草稿內容');
                 return;
             }
 
@@ -1579,11 +1717,11 @@
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            alert('✅ 草稿已匯出!');
+            await showAlert('✅ 草稿已匯出!');
         });
 
         // 匯入草稿
-        document.getElementById('importDraftBtn').addEventListener('click', () => {
+        document.getElementById('importDraftBtn').addEventListener('click', async () => {
             // 檢查是否有未儲存的內容
             const hasContent = document.getElementById('tripName').value ||
                               document.getElementById('location').value ||
@@ -1591,7 +1729,7 @@
                               uploadedImages.length > 0;
 
             if (hasContent) {
-                if (!confirm('⚠️ 目前有未儲存的內容\n\n匯入草稿會覆蓋現有內容,確定要繼續嗎?')) {
+                if (!await showConfirm('⚠️ 目前有未儲存的內容\n\n匯入草稿會覆蓋現有內容,確定要繼續嗎?')) {
                     return;
                 }
             }
@@ -1629,21 +1767,154 @@
                 // 儲存到暫存
                 saveFormDraft();
 
-                alert('✅ 草稿匯入成功!');
+                await showAlert('✅ 草稿匯入成功!');
                 
                 // 清空檔案選擇
                 e.target.value = '';
             } catch (error) {
-                alert('❌ 匯入失敗: ' + error.message + '\n\n請確認檔案格式正確');
+                await showAlert('❌ 匯入失敗: ' + error.message + '\n\n請確認檔案格式正確');
                 e.target.value = '';
             }
         });
+
+        // AI 生成心得功能
+        document.getElementById('aiGenerateBtn').addEventListener('click', async () => {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                await showAlert('請先輸入 API Key!');
+                return;
+            }
+
+            if (uploadedImages.length === 0) {
+                await showAlert('請先上傳照片!');
+                return;
+            }
+
+            const location = document.getElementById('location').value;
+            const attractions = document.getElementById('attractions').value;
+            const date = document.getElementById('date').value;
+
+            if (!location || !attractions || !date) {
+                await showAlert('請先填寫日期、地點和景點!');
+                return;
+            }
+
+            const btn = document.getElementById('aiGenerateBtn');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = '🤖 AI 分析中...';
+
+            try {
+                // 分析照片
+                const imageDescriptions = [];
+                const maxImages = Math.min(uploadedImages.length, 6); // 最多分析 6 張
+                
+                for (let i = 0; i < maxImages; i++) {
+                    btn.textContent = `🤖 分析照片 ${i + 1}/${maxImages}...`;
+                    
+                    try {
+                        const desc = await analyzeImageForNotes(uploadedImages[i], apiKey);
+                        imageDescriptions.push(desc);
+                        
+                        // 延遲避免 API 限流
+                        if (i < maxImages - 1) {
+                            await new Promise(resolve => setTimeout(resolve, 800));
+                        }
+                    } catch (error) {
+                        console.error('照片分析失敗:', error);
+                        imageDescriptions.push('精彩的照片');
+                    }
+                }
+
+                // 生成心得
+                btn.textContent = '✍️ 生成心得中...';
+                const notes = await generateNotesFromPhotos(date, location, attractions, imageDescriptions, apiKey);
+                
+                // 填入心得欄位
+                document.getElementById('notes').value = notes;
+                
+                await showAlert('✅ AI 心得生成成功!');
+            } catch (error) {
+                await showAlert('❌ 生成失敗: ' + error.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        async function analyzeImageForNotes(imageData, apiKey) {
+            const base64Data = imageData.split(',')[1];
+            
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text: '請用繁體中文詳細描述這張照片,包括場景、物體、氛圍、顏色等。50字以內。' },
+                            { inline_data: { mime_type: 'image/jpeg', data: base64Data }}
+                        ]
+                    }],
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('照片分析失敗');
+            }
+            
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        }
+
+        async function generateNotesFromPhotos(date, location, attractions, imageDescriptions, apiKey) {
+            const prompt = `請根據以下資訊生成一篇旅遊心得,約250-300字:
+
+日期: ${date}
+地點: ${location}
+景點: ${attractions}
+
+照片內容:
+${imageDescriptions.map((desc, i) => `照片${i + 1}: ${desc}`).join('\n')}
+
+要求:
+1. 用第一人稱,像寫日記一樣
+2. 根據照片描述旅遊過程和感受
+3. 融入照片中的場景和氛圍
+4. 語氣輕鬆自然
+5. 要有具體的感受
+6. 使用繁體中文
+7. 約 250-300 字`;
+
+            const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-goog-api-key': apiKey,
+                },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                }),
+            });
+
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                throw new Error(error.error?.message || '心得生成失敗');
+            }
+            
+            const data = await response.json();
+            return data.candidates[0].content.parts[0].text;
+        }
 
         // 測試 API Key 功能
         document.getElementById('testApiBtn').addEventListener('click', async () => {
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) {
-                alert('請先輸入 API Key!');
+                await showAlert('請先輸入 API Key!');
                 return;
             }
 
@@ -1653,23 +1924,33 @@
             btn.disabled = true;
 
             try {
-                const testUrl = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+                // 先測試列出可用的模型
+                const listResponse = await fetch(`https://generativelanguage.googleapis.com/v1/models`, {
+                    headers: { 'x-goog-api-key': apiKey }
+                });
+                
+                if (listResponse.ok) {
+                    const models = await listResponse.json();
+                    console.log('可用模型:', models);
+                }
 
-                const response = await fetch(testUrl, {
+                // 測試 gemini-2.0-flash-exp 模型
+                const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent('gemini-2.0-flash-exp')}:generateContent`;
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json', 
+                        'x-goog-api-key': apiKey,
+                    },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: '你好,請用繁體中文回覆「測試成功」' }] }],
-                        generationConfig: { 
-                            temperature: 0.7, 
-                            maxOutputTokens: 100
-                        }
-                    })
+                    }),
                 });
 
-                // 顯示詳細的狀態碼
                 let statusInfo = `HTTP 狀態碼: ${response.status}\n`;
-                statusInfo += `狀態文字: ${response.statusText}\n\n`;
+                statusInfo += `狀態文字: ${response.statusText}\n`;
+                statusInfo += `使用模型: gemini-2.0-flash-exp\n\n`;
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => null);
@@ -1707,8 +1988,10 @@
                         errorMsg += '\n請稍後再試';
                     } else if (response.status === 404) {
                         errorMsg += '💡 可能原因:\n';
-                        errorMsg += '- API 網址錯誤\n';
-                        errorMsg += '- 模型名稱不存在';
+                        errorMsg += '- 模型名稱不正確\n';
+                        errorMsg += '- API 版本不支援此模型\n\n';
+                        errorMsg += '建議:\n';
+                        errorMsg += '請確認您的 API Key 支援哪些模型';
                     } else if (response.status >= 500) {
                         errorMsg += '💡 原因:\n';
                         errorMsg += 'Google 伺服器錯誤\n';
@@ -1732,9 +2015,9 @@
                 if (error.message === '測試失敗') {
                     // 已經顯示過錯誤訊息了
                 } else if (error.message.includes('Failed to fetch')) {
-                    alert('❌ 網路連線失敗\n\n請檢查:\n1. 網路連線是否正常\n2. 是否開啟飛航模式\n3. WiFi/行動網路是否可用');
+                    await showAlert('❌ 網路連線失敗\n\n請檢查:\n1. 網路連線是否正常\n2. 是否開啟飛航模式\n3. WiFi/行動網路是否可用');
                 } else {
-                    alert('❌ 未知錯誤\n\n' + error.message);
+                    await showAlert('❌ 未知錯誤\n\n' + error.message);
                 }
             } finally {
                 btn.textContent = originalText;
@@ -1760,7 +2043,7 @@
                 }
             } catch (error) {
                 console.error('初始化失敗:', error);
-                alert('資料庫初始化失敗,請重新整理頁面');
+                await showAlert('資料庫初始化失敗,請重新整理頁面');
             }
         }
 
